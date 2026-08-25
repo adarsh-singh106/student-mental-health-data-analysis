@@ -1,33 +1,29 @@
 import logging
-from pathlib import Path
-from schema import SocialMediaUsageSchema
-
+from .schema import SocialMediaUsageSchema
 import pandas as pd
 import pandera.pandas as pa
 
 logger = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CSV_PATH = PROJECT_ROOT / 'data' / 'raw' / 'Student Social Media And Mental Health Impact.csv'
 
 # --------------------------------------------------------------------------
 # Pipeline-friendly validation entrypoint
 # --------------------------------------------------------------------------
 
-def validate_csv(path:str, lazy: bool = True) -> pd.DataFrame:
-    """Load & Validate a CSV against SocialMediaUsageSchema.
+def validate_df(raw_df:pd.DataFrame, lazy: bool = True) -> pd.DataFrame:
+    """Validate a DataFrame against SocialMediaUsageSchema.
 
     lazy=True (default, recommended for pipelines): collects ALL failures
     and logs a structured report before raising, instead of stopping at
     the first bad row.
 
     Args:
-        path (str): _description_
-        lazy (bool, optional): _description_. Defaults to True.
+        raw_df (pd.DataFrame): Raw DataFrame coming from an source
+        lazy (bool, optional): Don't Stop at first issue in DF. Defaults to True.
 
     Returns:
         pd.DataFrame: _description_
     """
-    df = pd.read_csv(path)
+    df = raw_df.copy()
 
     try:
         validated = SocialMediaUsageSchema.validate(df, lazy=lazy)
@@ -46,6 +42,5 @@ def validate_csv(path:str, lazy: bool = True) -> pd.DataFrame:
         logger.error("Validation failed (fail-fast): %s", e)
         raise
 
-if __name__ == "__main__":
-    validate_csv(CSV_PATH)
+
 
