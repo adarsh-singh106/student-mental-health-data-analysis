@@ -23,9 +23,7 @@ def remove_duplicates(raw_df:pd.DataFrame)-> pd.DataFrame:
 def fix_physical_activity_hours(raw_df:pd.DataFrame)->pd.DataFrame:
     """Clips negative physical activity values to zero and records which rows were corrected."""
     df = raw_df.copy()
-    # First Create Flag
-    df['Physical_Activity_Hours_Corrected'] = df['Physical_Activity_Hours'] < 0
-    df['Physical_Activity_Hours_Corrected']  = df['Physical_Activity_Hours_Corrected'].astype('int16')
+    
 
     # Clip the Negative Values
     df['Physical_Activity_Hours'] = df['Physical_Activity_Hours'].clip(lower=0)
