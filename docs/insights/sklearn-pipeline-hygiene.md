@@ -1,72 +1,122 @@
-# sklearn pipelines: builders return *unfitted* objects
+# sklearn pipeline ki safai — Hinglish me, apne code ke saath
 
-_A short engineering rule, learned while writing `features/preprocessing.py`._
+_Ye wahi cheez hai jo humne `features/preprocessing.py` me theek ki._
 
-## The rule
+## Sabse pehle: "fitted" aur "unfitted" ka matlab
 
-A function that builds a preprocessor should **create everything fresh inside
-itself** and return it **unfitted**. It should not touch data at all.
+Ye samajh liya toh baaki sab aasan hai.
+
+`StandardScaler()` ka kaam hai numbers ko normal karna. Par uske liye usko
+**mean aur standard deviation pata hona chahiye** — aur wo usse data se
+**seekhna** padta hai.
+
+**Unfitted (khali dabba)** — abhi bana hai, kuch nahi jaanta:
+
+```python
+scaler = StandardScaler()      # isko kuch nahi pata
+```
+
+**Fitted (bhara dabba)** — train data dekh liya, ab numbers yaad hain:
+
+```python
+scaler.fit(X_train)
+# ab andar ye store ho gaya (tumhare hi dataset se):
+#   Avg_Daily_Usage_Hours -> mean 5.078, std 1.654
+#   Study_Hours           -> mean 3.008, std 1.637
+```
+
+Aur `transform` inhi yaad kiye numbers ka istemaal karta hai.
+
+Bas yahi farak hai. **Unfitted = khali recipe. Fitted = jisme asli numbers bhar
+gaye.**
+
+Isi tarah tumhara `OneHotEncoder(max_categories=11)` bhi fit hone par
+**seekhta** hai ki top 10 countries kaunse hain (India, USA, UK, Canada...) aur
+baaki sab `infrequent` bucket me jaayenge. Wo list uske andar store ho jaati hai.
+
+## Rule 1 — builder har baar naye objects banaye
+
+Tumhara `build_preprocessor()` **unfitted** preprocessor return karta hai. Uske
+andar ke chhote pipelines bhi **function ke andar** bane hone chahiye.
+
+**Galat tarika (jo pehle tha):**
+
+```python
+numeric_pipeline = Pipeline(...)      # file ke top pe, function ke BAHAR
+
+def build_preprocessor():
+    return ColumnTransformer([("numeric_pipeline", numeric_pipeline, ...)])
+```
+
+**Sahi tarika (jo ab hai):**
 
 ```python
 def build_preprocessor():
-    numeric_pipeline = Pipeline(...)     # created INSIDE
+    numeric_pipeline = Pipeline(...)   # function ke ANDAR, har baar naya
     ...
-    return ColumnTransformer(...)        # unfitted
+    return ColumnTransformer([...])
 ```
 
-Not this:
+### Kyun? — tiffin box wali baat
+
+File ke top pe likha object **sirf ek baar** banta hai — jab file pehli baar
+import hoti hai. Uske baad tum `build_preprocessor()` **10 baar** bulao, sabko
+**wahi ek** `numeric_pipeline` milta hai. Ek hi tiffin box sabko baant diya.
+
+Ab agar kisi ne us box me kuch badal diya — jaise:
 
 ```python
-numeric_pipeline = Pipeline(...)         # created once at import, shared forever
-
-def build_preprocessor():
-    return ColumnTransformer([... numeric_pipeline ...])
+numeric_pipeline.set_params(scale__with_mean=False)
 ```
 
-## Why — reason 1: shared state
+toh wo badlav **poore program** me sab jagah lag jaayega. Tumhare test me bhi,
+training me bhi. Aur dhoondhna bahut mushkil hota hai, kyunki code ki us line me
+kuch galat nahi dikhta.
 
-Objects created at module level are made **once**, when the file is first
-imported. Every call to `build_preprocessor()` then hands out a
-`ColumnTransformer` pointing at the *same* underlying pipeline objects.
+**Sach:** sklearn `fit` karte waqt `clone()` karta hai (copy banata hai), toh
+fitted numbers usually leak nahi hote. Isi wajah se ye galti pakdi nahi jaati.
+Par **function ke andar banao toh ye problem ho hi nahi sakti.** Free me safety.
 
-sklearn happens to `clone()` transformers when it fits them, so fitted state
-does not usually leak between them — this is why the mistake often goes
-unnoticed. But if anything ever *mutates* one of those shared objects (e.g.
-`numeric_pipeline.set_params(...)`), the change silently affects every
-preprocessor in the whole process. A builder that builds fresh objects cannot
-have this problem at all.
+Column ke naam wali lists (`numeric_bucket`, `country_bucket`) top pe rakhna
+**theek hai** — wo configuration hain, unko fit nahi karte, sirf padhte hain.
 
-Column name lists are fine at module level — they are configuration, and you
-read them rather than fit them.
+## Rule 2 — builder data ko chhue hi na
 
-## Why — reason 2: fitting belongs elsewhere
+`build_preprocessor()` me:
+- koi `df` nahi
+- koi `.fit()` nahi
+- koi argument nahi
 
-The builder must not call `.fit()`, and must not accept a DataFrame. Fitting
-happens later, in the training script, **on the training split only**. If the
-builder ever fit anything, it would see data it should not see, and that is
-data leakage.
+Wo sirf **khali dabba banata hai aur return karta hai.** Bas.
 
-So the split of responsibility is:
+`fit` kahan hoga? `models/train.py` me — aur **sirf train data pe**:
 
-| File | Job |
-|------|-----|
-| `features/preprocessing.py` | *build* the unfitted preprocessor |
-| `models/train.py` | split the data, then *fit* it on train only |
-
-## Bonus gotcha: `FunctionTransformer` and feature names
-
-`FunctionTransformer(np.log1p)` does not know what to name its output column, so
-asking the pipeline for feature names blows up:
-
-```
-AttributeError: Estimator log_transform does not provide get_feature_names_out
+```python
+X_train, X_test, ... = train_test_split(...)     # pehle split
+pipeline.fit(X_train, y_train)                   # PHIR fit, sirf train pe
 ```
 
-Fix: `FunctionTransformer(np.log1p, feature_names_out="one-to-one")` —
-"one-to-one" means the output columns keep the input names. Worth setting always,
-because you *will* want feature names later for importance plots and debugging.
+### Kyun? — leakage
 
-## One-line summary
+Socho agar scaler ne **poore** data ka mean seekh liya (test wale rows bhi
+milake). Toh model ne indirectly test data ke baare me jaan liya. Phir test score
+**jhoot** bolega — asli duniya me model itna achha nahi hoga.
 
-Builders construct fresh, unfitted objects and never see data; training fits
-them on the training split only.
+Isliye order hamesha yahi: **split pehle, fit baad me.**
+
+## Kaam ka batwara
+
+| File | Kaam |
+|------|------|
+| `features/preprocessing.py` | khali (unfitted) preprocessor **banata** hai |
+| `models/train.py` | data split karta hai, phir usse **train pe fit** karta hai |
+
+## Ek aur gotcha
+
+`FunctionTransformer` wala bug — uska pura Hinglish explanation alag doc me hai:
+[feature-names-bug.md](feature-names-bug.md)
+
+## Ek line me pura matlab
+
+> Builder **khali** dabba banata hai aur data ko chhuta bhi nahi.
+> Training us dabbe ko **sirf train data** pe bharti hai.
