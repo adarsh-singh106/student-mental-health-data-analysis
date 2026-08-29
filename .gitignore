@@ -52,15 +52,26 @@ desktop.ini
 # =========================
 
 # Generated datasets / large data
-data/raw/
-data/processed/
+# Leading "/" = repo root only. Without it, the pattern would match a folder
+# of the same name at ANY depth.
+/data/raw/
+/data/processed/
 
-# Model artifacts
-models/
+# Model artifacts (build outputs, never source code)
+# NOTE: "models/" without the leading slash also matched
+# src/mental_health/models/ and hid train.py from git entirely.
+# Ignore the CONTENTS but keep the folder, so a fresh clone has somewhere
+# for `train.py` to write to.
+/artifacts/*
+!/artifacts/.gitkeep
 *.pkl
 *.joblib
 *.h5
 *.onnx
+
+# ...but test fixtures are source, not build output
+!tests/**/*.joblib
+!tests/**/*.pkl
 
 # =========================
 # Logs / temporary files
