@@ -20,18 +20,23 @@ def _git_dirty():
     )
     return out.strip() != ""
 
-def make_dir(fname:str):
-    folder = Path(__file__).parents[3] / "artifacts" / fname
+def make_dir(fname:str, artifacts_root:str):
+    folder = artifacts_root / fname
 
     folder.mkdir(parents=True)
     return folder
 
-def save_artifact(artifact_pipeline:Pipeline, metrics:dict, dataset:dict):
+def save_artifact(artifact_pipeline:Pipeline, metrics:dict, dataset:dict, artifacts_root: Path = None):
+    # When default artifact is not provided
+    if artifacts_root is None: # Better practice to use "is"
+        artifacts_root = Path(__file__).parents[3] / "artifacts"
+        # artifacts_root --> Now the artifacts_root itself is a ROOT Path ! 
+
     now = datetime.now(timezone.utc)
     dir_name = now.strftime("%Y%m%dT%H%M%SZ")
     created_at = now.isoformat()
 
-    folder = make_dir(dir_name)
+    folder = make_dir(dir_name,artifacts_root)
 
     joblib.dump(artifact_pipeline,folder / "model.joblib")
     names = artifact_pipeline.named_steps["prep"].get_feature_names_out().tolist()
@@ -70,7 +75,7 @@ def save_artifact(artifact_pipeline:Pipeline, metrics:dict, dataset:dict):
         json.dump(metadata, f, indent=2)
 
     
-    latest = Path(__file__).parents[3] / "artifacts" / "latest.txt"
+    latest = artifacts_root / "latest.txt"
     latest.write_text(dir_name)
 
     
