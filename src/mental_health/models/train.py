@@ -1,6 +1,8 @@
 
 from mental_health.data.preparation import prepare_data
 from mental_health.features.preprocessing import build_preprocessor
+from mental_health.models.gate import gate
+from mental_health.models.save import save_artifact
 
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
@@ -80,10 +82,19 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     path = Path(__file__).parents[3] / "data" / "raw" / "Student Social Media And Mental Health Impact.csv"
-    pipeline, metrics = train(path)
-    
+    pipeline, metrics, dataset = train(path)
+
+    # 1. TRAIN
     train_metrics = metrics["train"]
     test_metrics = metrics["test"]
+    
     logger.info("train | r2=%.4f mae=%.4f rmse=%.4f", train_metrics["r2"], train_metrics["mae"], train_metrics["rmse"])
     logger.info("test  | r2=%.4f mae=%.4f rmse=%.4f", test_metrics["r2"], test_metrics["mae"], test_metrics["rmse"])
 
+    # 2. GATE (raise / save)
+    gate(metrics)
+    logger.info("gate passed")
+
+    # 3. SAVE (Only if passed through GATE)
+    save_artifact(pipeline, metrics, dataset)
+    logger.info("artifact Saved")
