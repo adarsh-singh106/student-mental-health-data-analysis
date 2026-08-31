@@ -52,7 +52,7 @@ def train(path:Path):
 
     pipeline = Pipeline([
         ("prep",build_preprocessor()),
-        ("model",RandomForestRegressor(random_state=42))
+        ("model",RandomForestRegressor(random_state=42,n_jobs=1))
     ])
 
     pipeline.fit(X_train,y_train)
