@@ -90,3 +90,7 @@ desktop.ini
 .ruff_cache/
 .coverage
 htmlcov/
+
+ML Project.html
+GUIDE.md
+dbt.md
