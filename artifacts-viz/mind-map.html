@@ -1,0 +1,420 @@
+<title>Notebook to Production</title>
+<meta name="description" content="A visual mind map of the student mental-health ML project — pipeline stages, what is built, and the decision behind each." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap" />
+<style>
+  :root {
+    --bg: #eef2f1;
+    --surface: #ffffff;
+    --surface-2: #e7ecea;
+    --ink: #16211f;
+    --ink-soft: #435350;
+    --muted: #69766f;
+    --line: #d5dcda;
+    --line-strong: #bcc6c3;
+    --accent: #0c6b61;
+    --accent-2: #0a534b;
+    --done: #167c43;
+    --done-bg: #e4f4ea;
+    --partial: #a85a08;
+    --partial-bg: #f9eddb;
+    --pending: #6b7a77;
+    --pending-bg: #e7ecea;
+    --shadow: 0 1px 2px rgba(16,33,31,.04), 0 8px 24px rgba(16,33,31,.06);
+    --radius: 14px;
+    --maxw: 1180px;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --cond: "IBM Plex Sans Condensed", var(--sans);
+  }
+  :root:not([data-theme="light"]) {
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0c1413;
+      --surface: #121c1a;
+      --surface-2: #18241f;
+      --ink: #e7edeb;
+      --ink-soft: #aebbb7;
+      --muted: #83928e;
+      --line: #253431;
+      --line-strong: #33443f;
+      --accent: #2dd4bf;
+      --accent-2: #5eead4;
+      --done: #45c47a;
+      --done-bg: #123021;
+      --partial: #e8a33d;
+      --partial-bg: #33230e;
+      --pending: #7f8e8a;
+      --pending-bg: #18241f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0c1413; --surface: #121c1a; --surface-2: #18241f;
+    --ink: #e7edeb; --ink-soft: #aebbb7; --muted: #83928e;
+    --line: #253431; --line-strong: #33443f;
+    --accent: #2dd4bf; --accent-2: #5eead4;
+    --done: #45c47a; --done-bg: #123021;
+    --partial: #e8a33d; --partial-bg: #33230e;
+    --pending: #7f8e8a; --pending-bg: #18241f;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 500;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+  }
+  /* header */
+  header.hero { padding: 56px 0 28px; border-bottom: 1px solid var(--line); }
+  .hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+  h1 { font-family: var(--cond); font-weight: 700; font-size: clamp(30px, 5vw, 50px); line-height: 1.02; letter-spacing: -.01em; }
+  h1 .arrow { color: var(--accent); }
+  .lede { margin-top: 14px; max-width: 60ch; color: var(--ink-soft); font-size: 17px; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .toggle {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: 999px; padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  }
+  .toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* progress row */
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; flex: 1 1 150px; box-shadow: var(--shadow); }
+  .stat .n { font-family: var(--cond); font-weight: 700; font-size: 26px; line-height: 1; }
+  .stat .l { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 7px; }
+  .bar { height: 7px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 24px; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .bar .b-done { background: var(--done); }
+  .bar .b-partial { background: var(--partial); }
+  /* section */
+  section { padding: 44px 0; border-bottom: 1px solid var(--line); }
+  .sec-head { margin-bottom: 24px; }
+  .sec-head h2 { font-family: var(--cond); font-weight: 700; font-size: 24px; margin-top: 8px; }
+  .sec-head p { color: var(--ink-soft); max-width: 68ch; margin: 8px 0 0; }
+  /* legend */
+  .legend { display: flex; gap: 22px; flex-wrap: wrap; font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .dot { width: 11px; height: 11px; border-radius: 3px; }
+  .dot.done { background: var(--done); }
+  .dot.partial { background: var(--partial); }
+  .dot.pending { background: transparent; border: 1.5px dashed var(--pending); }
+  /* spine figure */
+  figure { margin: 0; }
+  .spine-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .spine-scroll svg { display: block; min-width: 860px; max-width: 100%; height: auto; }
+  figcaption { margin-top: 14px; font-size: 13.5px; color: var(--muted); max-width: 74ch; }
+  figcaption b { color: var(--ink-soft); font-weight: 600; }
+  /* stage grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); position: relative; overflow: hidden;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--pending); }
+  .card.done::before { background: var(--done); }
+  .card.partial::before { background: var(--partial); }
+  .card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .card-idx { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .card h3 { font-family: var(--cond); font-weight: 700; font-size: 19px; }
+  .chip { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+  .chip.done { background: var(--done-bg); color: var(--done); }
+  .chip.partial { background: var(--partial-bg); color: var(--partial); }
+  .chip.pending { background: var(--pending-bg); color: var(--pending); border: 1px dashed var(--line-strong); }
+  .zone { border-top: 1px dashed var(--line); padding-top: 12px; }
+  .zone .zl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .zone p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .files code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); color: var(--ink); padding: 3px 7px; border-radius: 6px; }
+  .metric { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+  .metric b { color: var(--accent-2); font-weight: 600; }
+  /* cross-cutting threads */
+  .threads { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .thread { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+  .thread h3 { font-family: var(--cond); font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 9px; }
+  .thread h3 .tg { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 8px; }
+  .thread ul { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .thread li { font-size: 13.5px; color: var(--ink-soft); padding-left: 18px; position: relative; }
+  .thread li::before { content: "→"; position: absolute; left: 0; color: var(--accent); }
+  .thread li code { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+  .thread li b { color: var(--ink); font-weight: 600; }
+  /* decision callout */
+  .decision { background: linear-gradient(180deg, var(--surface), var(--surface-2)); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 22px 24px; box-shadow: var(--shadow); }
+  .decision .q { font-family: var(--cond); font-weight: 700; font-size: 18px; margin-bottom: 12px; }
+  .decision .vote { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-top: 12px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .two > div { font-size: 13.5px; color: var(--ink-soft); }
+  .two .h { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
+  footer { padding: 34px 0 60px; color: var(--muted); font-size: 13px; }
+  footer code { font-family: var(--mono); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; color: var(--ink-soft); }
+  @media (max-width: 560px) { .two { grid-template-columns: 1fr; } header.hero { padding: 36px 0 24px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div>
+        <p class="eyebrow">Student Mental-Health ML · Build Map</p>
+        <h1 style="margin-top:12px">Notebook <span class="arrow">&rarr;</span> Production</h1>
+      </div>
+      <button class="toggle" id="themeBtn" type="button" aria-label="Switch light or dark theme">◐ theme</button>
+    </div>
+    <p class="lede">Ek hi tasveer mein poora project. Har stage ke do pehlu: <strong>generic</strong> — koi bhi ML project yeh kyun karta hai, aur <strong>project-specific</strong> — apne file, number aur decision. Rang batata hai kya ban gaya, kya baaki hai.</p>
+    <div class="stats">
+      <div class="stat"><div class="n">5 / 9</div><div class="l">stages built</div></div>
+      <div class="stat"><div class="n">0.8902</div><div class="l">test R² (holdout)</div></div>
+      <div class="stat"><div class="n">39</div><div class="l">features · from 12 cols</div></div>
+      <div class="stat"><div class="n">4,998</div><div class="l">rows validated</div></div>
+    </div>
+    <div class="bar" title="5 built, 1 in progress, 3 pending">
+      <i class="b-done" style="width:56%"></i>
+      <i class="b-partial" style="width:8%"></i>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+<!--BODY-->
+<section id="flow">
+  <div class="sec-head">
+    <p class="eyebrow">The Spine</p>
+    <h2>Nau stage, ek dhaara — teen phase mein</h2>
+    <p>Ye pipeline hai, isliye <b>order maayne rakhta hai</b>. Abhi Part 2 par ho: gate pehle taaki kharab model disk tak pahunche hi na, phir versioned save, phir metadata jo har cheez ko traceable banata hai.</p>
+  </div>
+  <div class="legend" style="margin-bottom:20px">
+    <span><i class="dot done"></i> ban gaya</span>
+    <span><i class="dot partial"></i> chal raha (wiring baaki)</span>
+    <span><i class="dot pending"></i> abhi banana hai</span>
+  </div>
+  <figure>
+    <div class="spine-scroll">
+      <svg viewBox="0 0 1112 210" role="img" aria-label="Nine-stage ML pipeline: Data, Features, Train (Part 1, done), Gate, Save, Metadata (Part 2, current), API, UI, Deploy (Part 3, pending). Gate to Save to Metadata must run in order.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
+        </defs>
+        <!-- phase brackets -->
+        <g style="stroke:var(--line-strong);fill:none;stroke-width:1">
+          <path d="M16 50 L16 44 L360 44 L360 50"/>
+          <path d="M382 50 L382 44 L726 44 L726 50" style="stroke:var(--accent)"/>
+          <path d="M748 50 L748 44 L1092 44 L1092 50"/>
+        </g>
+        <g style="font-family:var(--mono);font-size:11px" text-anchor="middle">
+          <text x="188" y="30" style="fill:var(--muted)">PART 1 · training</text>
+          <text x="554" y="30" style="fill:var(--accent);font-weight:600">PART 2 · release  ● abhi</text>
+          <text x="920" y="30" style="fill:var(--muted)">PART 3 · serving</text>
+        </g>
+        <!-- nodes -->
+        <g text-anchor="middle">
+          <g style="fill:var(--done-bg);stroke:var(--done);stroke-width:1.5">
+            <rect x="16"  y="96" width="100" height="52" rx="9"/>
+            <rect x="138" y="96" width="100" height="52" rx="9"/>
+            <rect x="260" y="96" width="100" height="52" rx="9"/>
+            <rect x="382" y="96" width="100" height="52" rx="9"/>
+            <rect x="504" y="96" width="100" height="52" rx="9"/>
+          </g>
+          <rect x="626" y="96" width="100" height="52" rx="9" style="fill:var(--partial-bg);stroke:var(--partial);stroke-width:1.5"/>
+          <g style="fill:none;stroke:var(--pending);stroke-width:1.5;stroke-dasharray:4 3">
+            <rect x="748" y="96" width="100" height="52" rx="9"/>
+            <rect x="870" y="96" width="100" height="52" rx="9"/>
+            <rect x="992" y="96" width="100" height="52" rx="9"/>
+          </g>
+          <g style="fill:var(--ink);font-family:var(--cond);font-weight:700;font-size:14px">
+            <text x="66"   y="120">Data</text>
+            <text x="188"  y="120">Features</text>
+            <text x="310"  y="120">Train</text>
+            <text x="432"  y="120">Gate</text>
+            <text x="554"  y="120">Save</text>
+            <text x="676"  y="120">Metadata</text>
+            <text x="798"  y="120">API</text>
+            <text x="920"  y="120">UI</text>
+            <text x="1042" y="120">Deploy</text>
+          </g>
+          <g style="fill:var(--muted);font-family:var(--mono);font-size:9.5px">
+            <text x="66"   y="137">data load</text>
+            <text x="188"  y="137">preprocessing.py</text>
+            <text x="310"  y="137">train.py</text>
+            <text x="432"  y="137">gate.py</text>
+            <text x="554"  y="137">save.py</text>
+            <text x="676"  y="137">metadata.json</text>
+            <text x="798"  y="137">api/ · todo</text>
+            <text x="920"  y="137">form · todo</text>
+            <text x="1042" y="137">Docker+CI</text>
+          </g>
+        </g>
+        <!-- arrows -->
+        <g style="color:var(--ink-soft);stroke:currentColor;stroke-width:1.5">
+          <line x1="116" y1="122" x2="136" y2="122" marker-end="url(#ar)"/>
+          <line x1="238" y1="122" x2="258" y2="122" marker-end="url(#ar)"/>
+          <line x1="360" y1="122" x2="380" y2="122" marker-end="url(#ar)"/>
+          <line x1="726" y1="122" x2="746" y2="122" marker-end="url(#ar)"/>
+        </g>
+        <g style="stroke:var(--accent);stroke-width:2.2">
+          <line x1="482" y1="122" x2="502" y2="122" marker-end="url(#arA)"/>
+          <line x1="604" y1="122" x2="624" y2="122" marker-end="url(#arA)"/>
+        </g>
+        <g style="color:var(--pending);stroke:currentColor;stroke-width:1.5;stroke-dasharray:4 3">
+          <line x1="848" y1="122" x2="868" y2="122" marker-end="url(#ar)"/>
+          <line x1="970" y1="122" x2="990" y2="122" marker-end="url(#ar)"/>
+        </g>
+        <!-- part-2 order bracket -->
+        <path d="M382 166 L382 172 L726 172 L726 166" style="stroke:var(--accent);fill:none;stroke-width:1"/>
+        <text x="554" y="192" text-anchor="middle" style="font-family:var(--mono);font-size:11px;fill:var(--accent);font-weight:600">check → disk → record · kabhi ulta nahi</text>
+      </svg>
+    </div>
+    <figcaption><b>Kaise padhein:</b> baayen se dayen bahaav. Teal wale teer (Part 2) sirf aage jaate hain — <b>gate → save → metadata, kabhi ulta nahi</b>. Har box ke neeche uski asli file. Part 1 (data→train) ho chuka; API/UI/Deploy abhi baaki.</figcaption>
+  </figure>
+</section>
+<section id="stages">
+  <div class="sec-head">
+    <p class="eyebrow">Stage by Stage</p>
+    <h2>Har stage ke do pehlu</h2>
+    <p>Baayen: <b>generic</b> — koi bhi ML project yeh kyun karta hai. Dayen: <b>is project mein</b> — apni file, number aur decision.</p>
+  </div>
+  <div class="grid">
+    <article class="card done">
+      <div class="card-top"><div><div class="card-idx">01 / 09</div><h3>Data</h3></div><span class="chip done">ban gaya</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Har ML project raw data uthata hai aur usko ek predictable shape mein laata hai. Shape galat toh aage sab silently toot-ta hai.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>4,998 rows, 12 input columns. Target <b>Mental_Health_Score</b> (0–10 continuous). Pandera se schema validate hota hai.</p>
+        <div class="files"><code>pandera</code><code>Mental_Health_Score</code></div>
+        <div class="metric"><span>rows <b>4,998</b></span><span>cols <b>12</b></span></div></div>
+    </article>
+    <article class="card done">
+      <div class="card-top"><div><div class="card-idx">02 / 09</div><h3>Features</h3></div><span class="chip done">ban gaya</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Raw columns model ke samajhne layak numbers mein badalte hain (encode, scale) — ek hi Pipeline mein, taaki serving pe bilkul wahi transform chale.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>12 columns → <b>39 features</b>. OneHot + scaling sklearn Pipeline ke andar, named step <code>prep</code>. Fit sirf train pe (leakage se bachne ko).</p>
+        <div class="files"><code>preprocessing.py</code></div>
+        <div class="metric"><span>12 cols → <b>39 feats</b></span></div></div>
+    </article>
+    <article class="card done">
+      <div class="card-top"><div><div class="card-idx">03 / 09</div><h3>Train</h3></div><span class="chip done">ban gaya</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Model train data pe fit karo, phir <b>alag</b> test data pe naapo — taaki pata chale asli duniya mein kaisa chalega, ratta nahi.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>RandomForestRegressor, 70/30 split. train R²=0.9821, test R²=0.8902 — gap chhota, overfit control mein.</p>
+        <div class="files"><code>train.py</code></div>
+        <div class="metric"><span>test R² <b>0.8902</b></span><span>MAE <b>0.3258</b></span><span>RMSE <b>0.4391</b></span></div></div>
+    </article>
+    <article class="card done">
+      <div class="card-top"><div><div class="card-idx">04 / 09</div><h3>Gate</h3></div><span class="chip done">ban gaya</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Har model ship karne layak nahi. Ek gate metrics check karke kharab model ko rok deta hai. Fail pe <b>raise</b> (return False nahi) — taaki CI ka exit non-zero ho aur pipeline ruk jaye.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>Pure function: metrics dict andar → pass ya raise. Overfit gap <code>&lt; 0.15</code> (asli 0.0919), test R² <code>&gt; 0.85</code>. Apna <code>GateFailedError</code> — taaki "gate ne roka" vs "code phata" alag dikhe.</p>
+        <div class="files"><code>gate.py</code><code>GateFailedError</code></div>
+        <div class="metric"><span>R² ≥ <b>0.85</b></span><span>gap &lt; <b>0.15</b></span></div></div>
+    </article>
+    <article class="card done">
+      <div class="card-top"><div><div class="card-idx">05 / 09</div><h3>Save</h3></div><span class="chip done">ban gaya</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Pass hua model versioned, immutable folder mein jaata hai — overwrite ka koi path code mein hai hi nahi, taaki purane artifacts (rollback ki jaan) zinda rahein.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p><code>artifacts/&lt;UTC-no-colon&gt;/model.joblib</code>. Folder pehle se ho toh <code>FileExistsError</code> (free safety). <code>latest.txt</code> — text, symlink nahi (Windows permission).</p>
+        <div class="files"><code>save.py</code><code>model.joblib</code><code>latest.txt</code></div>
+        <div class="metric"><span><b>n_jobs=1</b> artifact mein baked</span></div></div>
+    </article>
+    <article class="card partial">
+      <div class="card-top"><div><div class="card-idx">06 / 09</div><h3>Metadata</h3></div><span class="chip partial">wiring baaki</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Artifact ke saath ek record — kaunsa data, kaunsa commit, kaun se metrics. Warna 6 mahine baad koi nahi bata payega ye model kahan se aaya.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p><code>metadata.json</code>: git commit + dirty, dataset <b>sha256</b>, 39 feature names, model params, env versions. save.py mein ban gaya — <b>train.py se wiring baaki</b> (dataset dict + sha256).</p>
+        <div class="files"><code>metadata.json</code></div>
+        <div class="metric"><span>features <b>39</b></span><span>sha256 fingerprint</span></div></div>
+    </article>
+    <article class="card">
+      <div class="card-top"><div><div class="card-idx">07 / 09</div><h3>API</h3></div><span class="chip pending">abhi baaki</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Model ko ek HTTP endpoint ke peeche rakho, taaki koi bhi app usse predict maang sake — model file ko chhue bina.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>FastAPI planned. CPU-bound predict ke liye <code>def</code> (async nahi — warna event loop block). <code>/healthz</code> (zinda hai?) vs <code>/readyz</code> (model load hua?).</p>
+        <div class="files"><code>api/ (planned)</code></div>
+        <div class="metric"><span>FastAPI · sync <b>def</b></span></div></div>
+    </article>
+    <article class="card">
+      <div class="card-top"><div><div class="card-idx">08 / 09</div><h3>UI</h3></div><span class="chip pending">abhi baaki</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>End user ke liye ek simple form — bina API ya JSON samjhe input de aur score dekh sake.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>Chhota form → API call → score wapas. Abhi shuru nahi hua; API ke baad aayega.</p>
+        <div class="files"><code>frontend (planned)</code></div>
+        <div class="metric"><span>—</span></div></div>
+    </article>
+    <article class="card">
+      <div class="card-top"><div><div class="card-idx">09 / 09</div><h3>Deploy / CI</h3></div><span class="chip pending">abhi baaki</span></div>
+      <div class="zone"><div class="zl">Generic — kyun</div><p>Reproducible container + automated check, taaki har commit pe gate chale aur "mere laptop pe toh chalta tha" khatam ho jaye.</p></div>
+      <div class="zone"><div class="zl">Is project mein</div><p>Docker + CI planned. Gate CI mein non-zero exit pe fail karega — kharab model merge hi na ho paye.</p>
+        <div class="files"><code>Dockerfile</code><code>CI (planned)</code></div>
+        <div class="metric"><span>gate → <b>CI exit</b></span></div></div>
+    </article>
+  </div>
+</section>
+<section id="threads">
+  <div class="sec-head">
+    <p class="eyebrow">Cross-cutting</p>
+    <h2>Jo har stage ke aar-paar chalta hai</h2>
+    <p>Ye stage nahi — ye teen dhaage hain jo poore project ko bandhe rakhte hain: samajhne ke docs, liye gaye decisions, aur <b>jaanbujh ke</b> chhodi gayi kamzoriyan.</p>
+  </div>
+  <div class="threads">
+    <div class="thread">
+      <h3>Docs &amp; understanding <span class="tg">docs</span></h3>
+      <ul>
+        <li><code>train-py.md</code> — Part 1 ki galtiyaan; <b>"crash dost, silent dushman"</b></li>
+        <li><code>gate-and-save-py.md</code> — Part 2 ka post-mortem (aaj bana)</li>
+        <li><code>GUIDE.md §17</code> — gate → save → metadata ka order aur kyun</li>
+        <li><code>sklearn-pipeline-hygiene.md</code> — builder khali dabba, fit sirf train pe</li>
+      </ul>
+    </div>
+    <div class="thread">
+      <h3>Decisions / ADR <span class="tg">decisions</span></h3>
+      <ul>
+        <li><b>Ship 70%-fit</b> vs refit 100% — pending ADR (mera vote: ship-70%)</li>
+        <li><code>ADR 0002</code> — no imputers, loudly fail karo</li>
+        <li><b>raise</b>, <code>return False</code> nahi — CI non-zero exit</li>
+        <li>UTC no-colon + text <code>latest.txt</code> — Windows constraint</li>
+      </ul>
+    </div>
+    <div class="thread">
+      <h3>Jaanbujh ke kamzor <span class="tg">risks</span></h3>
+      <ul>
+        <li>🔴 <code>gate.py</code>/<code>save.py</code> ke <b>koi test nahi</b> — gate ka test milliseconds ka hai, likhna hi hai</li>
+        <li>🟡 <code>passed:True</code> hardcode — call order pe bharosa, code pe nahi</li>
+        <li>🟡 <code>MAX_TEST_MAE=0.35</code> vs measured 0.3258 — sirf ~7% headroom (single split)</li>
+        <li>🟡 <code>Path(__file__).parents[3]</code> — file ek folder sarki toh chupchaap galat jagah</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section id="decision">
+  <div class="sec-head">
+    <p class="eyebrow">Ek pending decision</p>
+    <h2>Kaunsa model disk pe jaaye?</h2>
+  </div>
+  <div class="decision">
+    <div class="q">70%-fit model ship karein, ya 100% data pe refit karke?</div>
+    <div class="two">
+      <div><div class="h">Ship 70% (mera vote)</div>Jo model gate se pass hua aur jiske metrics metadata mein likhe hain — <b>wahi</b> disk pe jaaye. Metrics artifact ko sach mein describe karte hain. Traceability poori.</div>
+      <div><div class="h">Refit 100%</div>Thoda behtar model milega, par metadata ke metrics ab ek <b>alag</b> model ke hain jise humne kabhi test hi nahi kiya. Metadata jhooth bolega.</div>
+    </div>
+    <div class="vote">→ Portfolio project ke liye traceability &gt; thoda extra accuracy. Isliye ship-70%. Ye ADR mein likhna hai.</div>
+  </div>
+</section>
+<footer>
+  <div>Student Mental-Health ML · <b>Notebook → Production</b> build map. Rang: <code>ban gaya</code> · <code>wiring baaki</code> · <code>abhi banana hai</code>. Ek line ka lesson: <b>order hi asli safety hai — gate pehle taaki kharab model disk tak pahunche hi na.</b></div>
+</footer>
+<script>
+  (function () {
+    var btn = document.getElementById('themeBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var root = document.documentElement;
+      var cur = root.getAttribute('data-theme');
+      var isDark = cur ? cur === 'dark'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    });
+  })();
+</script>
+</main>
+
+
