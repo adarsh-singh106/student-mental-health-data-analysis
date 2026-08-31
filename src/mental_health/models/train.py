@@ -8,6 +8,8 @@ from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.metrics import root_mean_squared_error,mean_absolute_error,r2_score
 
+import hashlib
+
 from pathlib import Path
 import logging
 logger = logging.getLogger(__name__)
@@ -31,6 +33,13 @@ def train(path:Path):
     # Get prepared DF from data preparation Pipeline
     prepared_df = prepare_data(path)
 
+    # Make Dataset dict for adding in metadata
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    dataset = {
+        "file":path.name,
+        "rows":len(prepared_df),
+        "sha256":sha
+    }
 
     # Split Features & Target Column
     X = prepared_df.drop(columns=['Mental_Health_Score']) 
@@ -64,7 +73,7 @@ def train(path:Path):
     return pipeline, {
         "train":train_metrics,
         "test":test_metrics
-    }
+    },dataset
 
 
 if __name__ == "__main__":
