@@ -58,7 +58,7 @@ def readyz(req: Request):
 def predict(payload: PredictionRequest, req: Request) -> PredictionResponse | JSONResponse:
     artifact = req.app.state.artifact
 
-    if artifact == None :
+    if artifact is None :
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
