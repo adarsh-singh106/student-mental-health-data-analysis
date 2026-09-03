@@ -25,6 +25,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.exception_handler(Exception)
+def unhandled_exception_handler(req: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
+
 
 # GET /health : Is Application Running ?
 @app.get("/healthz")
@@ -58,7 +65,7 @@ def readyz(req: Request):
 def predict(payload: PredictionRequest, req: Request) -> PredictionResponse | JSONResponse:
     artifact = req.app.state.artifact
 
-    if artifact is None :
+    if artifact is None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
