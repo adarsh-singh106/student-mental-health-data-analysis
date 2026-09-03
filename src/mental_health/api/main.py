@@ -1,13 +1,12 @@
-import pandas as pd
-
 from contextlib import asynccontextmanager
 
+import pandas as pd
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from mental_health.api.artifacts import ArtifactLoadError, load_latest_artifact
-
 from mental_health.api.schemas import PredictionRequest, PredictionResponse
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,8 +21,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Student Mental Health Prediction API",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 @app.exception_handler(Exception)
 def unhandled_exception_handler(req: Request, exc: Exception):
@@ -33,14 +33,13 @@ def unhandled_exception_handler(req: Request, exc: Exception):
     )
 
 
-# GET /health : Is Application Running ?
+# GET /healthz: is the application process running?
 @app.get("/healthz")
-def healthz() -> dict[str,str]:
-    return {
-        "status": "ok"
-    }
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
 
-# GET /ready : Is model available to serve
+
+# GET /readyz: is the model available to serve predictions?
 @app.get("/readyz")
 def readyz(req: Request):
     artifact = req.app.state.artifact
@@ -50,17 +49,17 @@ def readyz(req: Request):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "status": "not_ready",
-                "reason": req.app.state.startup_error
-            }
+                "reason": req.app.state.startup_error,
+            },
         )
 
     return {
         "status": "ready",
-        "model_version": artifact["version"]
+        "model_version": artifact["version"],
     }
 
 
-# POST /predict : give model the DF to get prediction
+# POST /predict: run the loaded model on one validated request.
 @app.post("/predict", response_model=PredictionResponse)
 def predict(payload: PredictionRequest, req: Request) -> PredictionResponse | JSONResponse:
     artifact = req.app.state.artifact
@@ -70,13 +69,13 @@ def predict(payload: PredictionRequest, req: Request) -> PredictionResponse | JS
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "status": "not_ready",
-                "reason": req.app.state.startup_error
-            }
+                "reason": req.app.state.startup_error,
+            },
         )
     row = pd.DataFrame([payload.model_dump()])
-    prediction = artifact['pipeline'].predict(row)
+    prediction = artifact["pipeline"].predict(row)
 
     return PredictionResponse(
         mental_health_score=float(prediction[0]),
-        model_version= artifact['version']
+        model_version=artifact["version"],
     )
