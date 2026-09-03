@@ -94,3 +94,5 @@ htmlcov/
 ML Project.html
 GUIDE.md
 dbt.md
+.tmp-run/
+.uv-cache-run/
