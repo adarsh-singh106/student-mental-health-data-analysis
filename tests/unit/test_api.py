@@ -26,6 +26,11 @@ class FakePipeline:
         return [7.25]
 
 
+class CrashingPipeline:
+    def predict(self, rows):
+        raise RuntimeError("secret internal failure")
+
+
 def fake_load_latest_artifact() -> dict:
     return {
         "pipeline": FakePipeline(),
@@ -37,6 +42,15 @@ def fake_load_latest_artifact() -> dict:
 
 def fake_load_latest_artifact_failure() -> dict:
     raise main.ArtifactLoadError("boom")
+
+
+def fake_load_crashing_artifact() -> dict:
+    return {
+        "pipeline": CrashingPipeline(),
+        "metadata": {},
+        "version": "test-version",
+        "path": "fake-path",
+    }
 
 
 def test_healthz_returns_ok():
@@ -73,6 +87,16 @@ def test_predict_returns_prediction_for_valid_payload(monkeypatch):
     assert body["note"]
 
 
+def test_predict_rejects_target_in_request(monkeypatch):
+    monkeypatch.setattr(main, "load_latest_artifact", fake_load_latest_artifact)
+    payload = {**VALID_PAYLOAD, "Mental_Health_Score": 8.0}
+
+    with TestClient(main.app) as client:
+        response = client.post("/predict", json=payload)
+
+    assert response.status_code == 422
+
+
 def test_readyz_returns_503_when_artifact_fails(monkeypatch):
     monkeypatch.setattr(main, "load_latest_artifact", fake_load_latest_artifact_failure)
 
@@ -84,6 +108,17 @@ def test_readyz_returns_503_when_artifact_fails(monkeypatch):
         "status": "not_ready",
         "reason": "boom",
     }
+
+
+def test_predict_returns_clean_500_when_pipeline_crashes(monkeypatch):
+    monkeypatch.setattr(main, "load_latest_artifact", fake_load_crashing_artifact)
+
+    with TestClient(main.app, raise_server_exceptions=False) as client:
+        response = client.post("/predict", json=VALID_PAYLOAD)
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+    assert "secret internal failure" not in response.text
 
 
 def test_predict_returns_503_when_artifact_fails(monkeypatch):
