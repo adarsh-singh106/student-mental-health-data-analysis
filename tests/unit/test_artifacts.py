@@ -61,6 +61,7 @@ PIPELINE, uske metrics , konse data pe train hua , kaha save krna h  ye sab leta
 # test  →  jo save kiya == jo load hua ?  (metrics, features=2, version match)
 def test_save_then_load_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False) # Don't ask git
+    monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit") # git binary bhi mat maango
     metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
     dataset = {"file": "x.csv", "rows": 3, "sha256": "abc"}
     save_artifact(make_fitted_pipe(), metrics, dataset, artifacts_root=tmp_path)
