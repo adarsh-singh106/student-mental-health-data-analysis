@@ -68,10 +68,16 @@ Nothing else counts until this is done. Right now no one but you can run this re
       that. Verified locally as far as this machine allows — 19 tests green via the same pytest
       the container runs — but `docker build`/`make` are absent here, so the real build+run proof
       comes from CI (0.7) on Linux.*
-- [ ] **0.7** Check whether `.github/workflows/` actually contains a workflow file — the audit
+- [🗸] **0.7** Check whether `.github/workflows/` actually contains a workflow file — the audit
       only saw the directory. Even if a workflow exists, **it has never run once**, because
-      there was no remote for GitHub to run it on. After 0.2 it will run. Make it do
-      `uv sync` + `pytest`. Your 6 test files are real regardless of whether the data moves.
+      there was no remote for GitHub to run it on. After 0.2 it will run. Make it do `uv sync`
+      + `pytest`. Your 6 test files are real regardless of whether the data moves. *Done:
+      `.github/workflows/ci.yml` had no file (empty dir). Added two jobs on push+PR — `test`
+      (uv sync + pytest, the literal ask) and `docker` (docker build, then pytest inside the
+      image, which is also the real build proof for 0.6). First run failed and caught three
+      genuine hidden bugs (README.md never committed but required by pyproject; Dockerfile
+      never COPYed it; save tests bound to the real git binary). All fixed; run `f0d2e2b` is
+      green on both jobs.*
 
 **Done when:** you can clone into an empty folder, run three documented commands, and get a
 trained artifact plus a serving API. Test this by actually cloning into a temp folder.
