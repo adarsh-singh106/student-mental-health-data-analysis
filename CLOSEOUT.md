@@ -51,9 +51,12 @@ Nothing else counts until this is done. Right now no one but you can run this re
       record the URL, the date you downloaded it, and the sha256 already in `metadata.json`
       (`32b542a4…`). If you cannot find the source, write that down too — "origin
       undocumented" is a real finding, not an embarrassment.
-- [ ] **0.4** Add `scripts/fetch_data.py` that downloads the CSV to `data/raw/` and checks the
+- [🗸] **0.4** Add `scripts/fetch_data.py` that downloads the CSV to `data/raw/` and checks the
       sha256, or — if licensing is unclear — document the manual step in the README. A cloner
-      must have some path to a working `data/raw/`.
+      must have some path to a working `data/raw/`. *Done: license is unclear (no LICENSE on
+      source repo), so the script does not download. It verifies instead — hashes an existing
+      `data/raw/` file against the known-good sha256 (exit 0/1), or prints the source URL,
+      exact filename, and target dir when the file is missing (exit 2).*
 - [🗸] **0.5** Make `save_artifact` raise instead of writing when `_git_dirty()` is True. The
       shipped artifact says `dirty: true`, which means your provenance record cannot reproduce
       your model. Fixing this is 3 lines and it repairs the one thing you built well.
