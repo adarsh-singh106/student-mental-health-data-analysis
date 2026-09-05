@@ -28,7 +28,8 @@ def make_fitted_pipe():
 
     return pipe
 
-def test_save_artifact_writes_files(tmp_path):
+def test_save_artifact_writes_files(tmp_path, monkeypatch):
+    monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False) # Don't Ask git
     pipe = make_fitted_pipe()
     metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
     dataset = {"file": "x.csv", "rows": 3, "sha256": "abc"}
@@ -50,3 +51,4 @@ def test_save_artifact_writes_files(tmp_path):
     assert meta["features"]["count"] == 2      # a, b → 2 columns
     assert meta["gate"]["passed"] is True
     assert meta["metrics"] == metrics
+    

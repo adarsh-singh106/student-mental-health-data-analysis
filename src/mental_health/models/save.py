@@ -9,6 +9,9 @@ import sklearn, pandas, platform
 
 from mental_health.models.gate import MIN_TEST_R2,MAX_TEST_MAE,MAX_TEST_RMSE
 
+class DirtyTreeError(Exception):
+    """Model Training is only allowed when working Tree is clean"""
+
 def _git_commit():
     return subprocess.check_output(
         ["git", "rev-parse", "HEAD"], text=True
@@ -31,6 +34,9 @@ def save_artifact(artifact_pipeline:Pipeline, metrics:dict, dataset:dict, artifa
     if artifacts_root is None: # Better practice to use "is"
         artifacts_root = Path(__file__).parents[3] / "artifacts"
         # artifacts_root --> Now the artifacts_root itself is a ROOT Path ! 
+
+    if _git_dirty():
+        raise DirtyTreeError("Train on Clean Tree")
 
     now = datetime.now(timezone.utc)
     dir_name = now.strftime("%Y%m%dT%H%M%SZ")
