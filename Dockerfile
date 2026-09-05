@@ -35,9 +35,12 @@ RUN uv sync --frozen --no-install-project
 
 # Step 4 — now copy our actual source code into the box.
 # tests/ is copied too so `make test` (and CI in 0.7) can run inside the image.
+# README.md is required here because pyproject's `readme = "README.md"` makes
+# hatchling read it when the full `uv sync` below installs our own package.
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
+COPY README.md ./
 
 # Install our own package now that the code is present.
 RUN uv sync --frozen
