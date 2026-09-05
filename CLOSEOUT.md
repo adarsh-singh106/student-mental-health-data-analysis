@@ -60,10 +60,14 @@ Nothing else counts until this is done. Right now no one but you can run this re
 - [🗸] **0.5** Make `save_artifact` raise instead of writing when `_git_dirty()` is True. The
       shipped artifact says `dirty: true`, which means your provenance record cannot reproduce
       your model. Fixing this is 3 lines and it repairs the one thing you built well.
-- [ ] **0.6** Add a `Dockerfile` and a `Makefile` with `make train`, `make serve`, `make test`.
+- [🗸] **0.6** Add a `Dockerfile` and a `Makefile` with `make train`, `make serve`, `make test`.
       This is *not* the ops theatre from the "do not build" list. A container answers "can a
       stranger run this", which is a reproducibility question, not a monitoring question.
-      Roughly 45 minutes.
+      Roughly 45 minutes. *Done: code-only image (uv, python:3.10-slim); data/ and artifacts/
+      are volume-mounted at run time, never baked in (license-safe). `.dockerignore` enforces
+      that. Verified locally as far as this machine allows — 19 tests green via the same pytest
+      the container runs — but `docker build`/`make` are absent here, so the real build+run proof
+      comes from CI (0.7) on Linux.*
 - [ ] **0.7** Check whether `.github/workflows/` actually contains a workflow file — the audit
       only saw the directory. Even if a workflow exists, **it has never run once**, because
       there was no remote for GitHub to run it on. After 0.2 it will run. Make it do

@@ -1,0 +1,25 @@
+# Like .gitignore, but for "docker build": anything listed here is kept OUT of
+# the build context, so it can never end up inside the image.
+
+# --- Safety: never bake data or trained models into the image ---------------
+# These are mounted from the host at run time (Raasta B). The CSV is unlicensed
+# and must not be redistributed inside an image; models belong outside the code.
+data/
+artifacts/
+
+# --- Speed + size: things the image simply doesn't need ---------------------
+.git/
+.venv/
+notebooks/
+audit/
+docs/
+*.md
+# ...but keep README.md: pyproject's `readme = "README.md"` means the build
+# (hatchling, during `uv sync`) fails if it's missing from the context.
+!README.md
+
+# Python caches / test noise
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
