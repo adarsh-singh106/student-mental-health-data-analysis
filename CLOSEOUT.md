@@ -43,9 +43,9 @@ better interview story than any passing number.
 
 Nothing else counts until this is done. Right now no one but you can run this repo.
 
-- [ ] **0.1** Commit the 15 modified tracked files. Until this happens, the reviewed code
+- [🗸] **0.1** Commit the 15 modified tracked files. Until this happens, the reviewed code
       exists in no commit and the hash in `metadata.json` identifies nothing.
-- [ ] **0.2** Create a GitHub repo and push. 46 commits currently live only on your laptop.
+- [🗸] **0.2** Create a GitHub repo and push. 46 commits currently live only on your laptop.
       A portfolio project with no URL is not a portfolio project.
 - [ ] **0.3** Write `data/PROVENANCE.md`. Go find the GitHub repo you took the CSV from and
       record the URL, the date you downloaded it, and the sha256 already in `metadata.json`
