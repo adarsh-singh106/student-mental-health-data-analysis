@@ -65,9 +65,12 @@ Nothing else counts until this is done. Right now no one but you can run this re
       stranger run this", which is a reproducibility question, not a monitoring question.
       Roughly 45 minutes. *Done: code-only image (uv, python:3.10-slim); data/ and artifacts/
       are volume-mounted at run time, never baked in (license-safe). `.dockerignore` enforces
-      that. Verified locally as far as this machine allows — 19 tests green via the same pytest
-      the container runs — but `docker build`/`make` are absent here, so the real build+run proof
-      comes from CI (0.7) on Linux.*
+      that. `make serve` runs the API from the container; `make train` and `make test` run on
+      the host via uv — training on purpose, because it records the git commit into metadata
+      (provenance, 0.5) and a real git repo only exists on the host, never in the image. Verified
+      as far as this machine allows — 19 tests green via the same pytest the container runs — but
+      `docker build`/`make` are absent here, so the real build+run proof comes from CI (0.7) on
+      Linux.*
 - [🗸] **0.7** Check whether `.github/workflows/` actually contains a workflow file — the audit
       only saw the directory. Even if a workflow exists, **it has never run once**, because
       there was no remote for GitHub to run it on. After 0.2 it will run. Make it do `uv sync`
