@@ -47,14 +47,14 @@ Nothing else counts until this is done. Right now no one but you can run this re
       exists in no commit and the hash in `metadata.json` identifies nothing.
 - [🗸] **0.2** Create a GitHub repo and push. 46 commits currently live only on your laptop.
       A portfolio project with no URL is not a portfolio project.
-- [ ] **0.3** Write `data/PROVENANCE.md`. Go find the GitHub repo you took the CSV from and
+- [🗸] **0.3** Write `data/PROVENANCE.md`. Go find the GitHub repo you took the CSV from and
       record the URL, the date you downloaded it, and the sha256 already in `metadata.json`
       (`32b542a4…`). If you cannot find the source, write that down too — "origin
       undocumented" is a real finding, not an embarrassment.
 - [ ] **0.4** Add `scripts/fetch_data.py` that downloads the CSV to `data/raw/` and checks the
       sha256, or — if licensing is unclear — document the manual step in the README. A cloner
       must have some path to a working `data/raw/`.
-- [ ] **0.5** Make `save_artifact` raise instead of writing when `_git_dirty()` is True. The
+- [🗸] **0.5** Make `save_artifact` raise instead of writing when `_git_dirty()` is True. The
       shipped artifact says `dirty: true`, which means your provenance record cannot reproduce
       your model. Fixing this is 3 lines and it repairs the one thing you built well.
 - [ ] **0.6** Add a `Dockerfile` and a `Makefile` with `make train`, `make serve`, `make test`.
