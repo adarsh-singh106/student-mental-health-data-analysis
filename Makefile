@@ -1,40 +1,36 @@
-# Short names for the long docker commands, so a stranger (or you, in two
-# months) can run this project without memorising anything.
+# Short names for the commands, so a stranger (or you in two months) can run
+# this project without memorising anything.
 #
-#   make build   build the image once (recipe -> blueprint)
-#   make train   train the model inside a container (writes to ./artifacts)
-#   make serve   serve the API on http://localhost:8000
-#   make test    run the test suite
+#   make train   train the model on the HOST (writes ./artifacts)
+#   make test    run the tests on the HOST
+#   make build   build the serving image (recipe -> blueprint)
+#   make serve   serve the API from the container on http://localhost:8000
 #
-# Data (./data) and models (./artifacts) are mounted from the host, never baked
-# into the image (Raasta B).
+# Why the split: training records the git commit into the model's metadata
+# (provenance — see save.py), and a clean git repo only exists on the host; the
+# image deliberately ships no .git. So training and dev tests run on the host
+# via uv, and the container is the deployable that serves the trained model.
+# (CI additionally builds the image and runs pytest inside it — .github/workflows.)
 
 IMAGE := mental-health
 
-# These names are commands, not files, so declare them "phony" (make should
-# always run them, never look for a file called "build"/"train"/etc).
-.PHONY: build train serve test
+.PHONY: train test build serve
+
+# Host: needs data/raw/ present (see scripts/fetch_data.py) and a clean git tree
+# (save.py refuses to write a model from a dirty tree, so provenance stays honest).
+train:
+	uv run --frozen python -m mental_health.models.train
+
+test:
+	uv run --frozen pytest
 
 build:
 	docker build -t $(IMAGE) .
 
-# Mount ./data (read-only: training only reads the CSV) and ./artifacts
-# (writable: the trained model is written back out to the host).
-train: build
-	docker run --rm \
-		-v "$(CURDIR)/data:/app/data:ro" \
-		-v "$(CURDIR)/artifacts:/app/artifacts" \
-		$(IMAGE) python -m mental_health.models.train
-
-# Mount ./artifacts read-only (serving only reads the model). -p maps the
-# container's port 8000 to your laptop's 8000 so a browser can reach it.
+# Mount the host's ./artifacts read-only so the container serves the trained
+# model. -p maps the container's port 8000 to your laptop's 8000.
 serve: build
 	docker run --rm \
 		-p 8000:8000 \
 		-v "$(CURDIR)/artifacts:/app/artifacts:ro" \
 		$(IMAGE)
-
-# Tests are copied into the image and dev deps (pytest/httpx) are installed by
-# `uv sync`, so no mounts and no extra flags are needed — just run pytest.
-test: build
-	docker run --rm $(IMAGE) pytest
