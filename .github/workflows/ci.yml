@@ -1,0 +1,49 @@
+# CI: on every push and pull request, a clean Linux machine runs our checks.
+# You can't forget to run these; the robot never forgets.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Job 1 — fast feedback: install deps with uv and run the tests natively.
+  # This is CLOSEOUT 0.7's literal ask (uv sync + pytest).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Pull our repo's code onto the runner.
+      - uses: actions/checkout@v4
+
+      # Install uv, and cache its downloads between runs so it's fast.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Install exactly what uv.lock pins (--frozen = don't re-resolve).
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Run the suite. No data/ or artifacts/ needed — the tests are isolated.
+      - name: Run tests
+        run: uv run --frozen pytest
+
+  # Job 2 — the real proof for 0.6: the Docker image actually builds AND its
+  # tests pass inside the container. This is the thing we could not verify on
+  # the Windows dev machine (no docker there); GitHub's Linux runner has it.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build the image from our Dockerfile. Fails loudly if the recipe is wrong.
+      - name: Build image
+        run: docker build -t mental-health .
+
+      # Run pytest inside the freshly built image — proves the shipped image is
+      # not just buildable but actually runnable. (Same as `make test`.)
+      - name: Test inside the image
+        run: docker run --rm mental-health pytest
