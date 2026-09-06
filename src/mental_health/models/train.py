@@ -4,12 +4,13 @@ from mental_health.features.preprocessing import build_preprocessor
 from mental_health.models.gate import gate
 from mental_health.models.save import save_artifact
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_validate
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.metrics import root_mean_squared_error,mean_absolute_error,r2_score
 
+import numpy as np
 import hashlib
 
 from pathlib import Path
@@ -66,6 +67,29 @@ def train(path:Path):
         ("model",RandomForestRegressor(random_state=42,n_jobs=1))
     ])
 
+    # 5-fold cross-validation on train+val (the 80% that is NOT the test vault).
+    # This is what the gate now judges: instead of trusting one lucky split, we
+    # train 5 times on different 4/5 slices and score the held-out 1/5 each time,
+    # giving 5 numbers whose mean is the real performance and whose std is how
+    # much it wobbles. cross_validate clones the pipeline internally, so this
+    # does not touch the `pipeline` object we fit and ship below.
+    cv = cross_validate(
+        pipeline, X_temp, y_temp, cv=5,
+        scoring=("neg_mean_absolute_error", "r2"),
+    )
+    # sklearn returns MAE negated (higher = better convention); flip the sign back.
+    mae_folds = (-cv["test_neg_mean_absolute_error"]).tolist()
+    r2_folds = cv["test_r2"].tolist()
+    cv_metrics = {
+        "mae_mean": float(np.mean(mae_folds)),
+        "mae_std": float(np.std(mae_folds)),
+        "r2_mean": float(np.mean(r2_folds)),
+        "r2_std": float(np.std(r2_folds)),
+        "mae_folds": mae_folds,
+        "r2_folds": r2_folds,
+    }
+
+    # Fit the shipped model on the train slice only (test stays untouched).
     pipeline.fit(X_train,y_train)
 
     # Training Metrics (how well it fit what it has already seen)
@@ -76,14 +100,15 @@ def train(path:Path):
     y_pred_val = pipeline.predict(X_val)
     val_metrics = _compute_metrics(y_val,y_pred_val)
 
-    # Test Metrics (the vault — computed once, only reported)
+    # Test Metrics (the vault — computed once, only reported as test_final)
     y_pred_test = pipeline.predict(X_test)
     test_metrics = _compute_metrics(y_test,y_pred_test)
 
     return pipeline, {
         "train":train_metrics,
         "val":val_metrics,
-        "test":test_metrics
+        "cv":cv_metrics,
+        "test_final":test_metrics
     },dataset
 
 
@@ -96,14 +121,18 @@ if __name__ == "__main__":
     # 1. TRAIN
     train_metrics = metrics["train"]
     val_metrics = metrics["val"]
-    test_metrics = metrics["test"]
+    cv_metrics = metrics["cv"]
+    test_metrics = metrics["test_final"]
 
     logger.info("train | r2=%.4f mae=%.4f rmse=%.4f", train_metrics["r2"], train_metrics["mae"], train_metrics["rmse"])
     logger.info("val   | r2=%.4f mae=%.4f rmse=%.4f", val_metrics["r2"], val_metrics["mae"], val_metrics["rmse"])
-    logger.info("test  | r2=%.4f mae=%.4f rmse=%.4f", test_metrics["r2"], test_metrics["mae"], test_metrics["rmse"])
+    logger.info("cv    | r2=%.4f +/- %.4f  mae=%.4f +/- %.4f",
+                cv_metrics["r2_mean"], cv_metrics["r2_std"],
+                cv_metrics["mae_mean"], cv_metrics["mae_std"])
+    logger.info("test  | r2=%.4f mae=%.4f rmse=%.4f  (computed once)", test_metrics["r2"], test_metrics["mae"], test_metrics["rmse"])
 
-    # 2. GATE (raise / save)
-    gate(metrics)
+    # 2. GATE (raise / save) — judged on cross-validation, not one split
+    gate(cv_metrics)
     logger.info("gate passed")
 
     # 3. SAVE (Only if passed through GATE)
