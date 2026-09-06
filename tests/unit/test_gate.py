@@ -1,32 +1,26 @@
 import pytest
 
-from mental_health.models.gate import gate, GateFailedError
+from mental_health.models.gate import gate, GateFailedError, MAX_CV_MAE
 
 
-def test_gate_passes_for_good_model():
-    """Achha model — gap chhota, thresholds paar → True."""
-    stats = {
-        "train": {"r2": 0.9821, "mae": 0.12, "rmse": 0.17},
-        "test":  {"r2": 0.8902, "mae": 0.3258, "rmse": 0.4391},
-    }
-    assert gate(stats) is True
+def test_gate_passes_when_cv_mae_upper_below_bar():
+    """mean + std clearly under the bar → True."""
+    cv_stats = {"mae_mean": 0.34, "mae_std": 0.01, "r2_mean": 0.86, "r2_std": 0.01}
+    assert gate(cv_stats) is True
 
 
-def test_gate_raises_on_overfit():
-    """Train achha, test kharab — gap 0.15 se bada → raise."""
-    stats = {
-        "train": {"r2": 0.99, "mae": 0.05, "rmse": 0.08},
-        "test":  {"r2": 0.70, "mae": 0.30, "rmse": 0.45},
-    }
+def test_gate_raises_when_mean_alone_breaches():
+    """Even before adding std, the mean is already over the bar → raise."""
+    cv_stats = {"mae_mean": 0.42, "mae_std": 0.01, "r2_mean": 0.80, "r2_std": 0.02}
     with pytest.raises(GateFailedError):
-        gate(stats)
+        gate(cv_stats)
 
 
-def test_gate_raises_on_underperforming():
-    """Gap toh chhota, par test r2 0.85 se neeche → raise."""
-    stats = {
-        "train": {"r2": 0.80, "mae": 0.40, "rmse": 0.55},
-        "test":  {"r2": 0.75, "mae": 0.40, "rmse": 0.55},
-    }
+def test_gate_raises_when_std_pushes_over_bar():
+    """Mean is under the bar, but the spread pushes the worst case over → raise.
+    This is the whole point of adding std: a wobbly model must fail."""
+    cv_stats = {"mae_mean": 0.39, "mae_std": 0.03, "r2_mean": 0.84, "r2_std": 0.05}
+    assert cv_stats["mae_mean"] < MAX_CV_MAE          # mean alone would pass
+    assert cv_stats["mae_mean"] + cv_stats["mae_std"] > MAX_CV_MAE  # spread fails it
     with pytest.raises(GateFailedError):
-        gate(stats)
+        gate(cv_stats)
