@@ -7,7 +7,7 @@ import subprocess
 
 import sklearn, pandas, platform
 
-from mental_health.models.gate import MIN_TEST_R2,MAX_TEST_MAE,MAX_TEST_RMSE
+from mental_health.models.gate import MAX_CV_MAE
 
 class DirtyTreeError(Exception):
     """Model Training is only allowed when working Tree is clean"""
@@ -62,9 +62,7 @@ def save_artifact(artifact_pipeline:Pipeline, metrics:dict, dataset:dict, artifa
         "gate":{
             "passed":True,
             "thresholds": {
-        "min_test_r2": MIN_TEST_R2,
-        "max_test_mae": MAX_TEST_MAE,
-        "max_test_rmse": MAX_TEST_RMSE
+                "max_cv_mae": MAX_CV_MAE
             }
         },
         "git": {"commit": _git_commit(), "dirty": _git_dirty()},
