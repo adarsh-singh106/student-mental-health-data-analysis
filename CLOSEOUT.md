@@ -89,28 +89,28 @@ trained artifact plus a serving API. Test this by actually cloning into a temp f
 
 ## Phase 1 — fix the measurement defects (~5 h)
 
-- [ ] **1.1 Three-way split in `train.py`.** Currently one 70/30 split, metrics computed on
+- [🗸] **1.1 Three-way split in `train.py`.** Currently one 70/30 split, metrics computed on
       the 30%, and those same metrics handed to `gate()`. The split you report is the split you
       select on, so 0.890 is a selection score, not a held-out score. Change to
       train 60 / validation 20 / test 20. Select and gate on validation. Touch test **once**,
       at the very end, and write that number to metadata as `test_final`.
-- [ ] **1.2 Rewrite the gate on cross-validation, not one split.** Replace the current pass/fail
+- [🗸] **1.2 Rewrite the gate on cross-validation, not one split.** Replace the current pass/fail
       with: 5-fold CV on train+validation, and require `cv_mae_mean + cv_mae_std < MAX_MAE`.
       Store the fold list in metadata. Right now your CV MAE of 0.3568 breaches your own 0.35
       limit — the honest options are to raise the limit and say why, or admit the model does not
       clear the bar you set. Pick one deliberately and write the reason in an ADR.
-- [ ] **1.3 Delete the `abs(train_r2 - test_r2) < 0.15` check.** For a RandomForest grown to
+- [🗸] **1.3 Delete the `abs(train_r2 - test_r2) < 0.15` check.** For a RandomForest grown to
       pure leaves, a high train score is how the algorithm works, not evidence of a problem.
       Proof from your own audit: regularising *hurt* — `min_samples_leaf=5` dropped val r2 from
       0.8624 to 0.8295, and `=20` dropped it to 0.7849. So the defaults are genuinely the best
       of the three, and the gap statistic was measuring nothing useful. It also passed by only
       0.0314 of margin (0.1186 vs 0.15), so it was one unlucky split away from blocking a good
       model for the wrong reason. Replace it with the CV spread from 1.2.
-- [ ] **1.4 Fix the double catch-all on `Country`.** Confirmed: the literal string `'Other'`
+- [🗸] **1.4 Fix the double catch-all on `Country`.** Confirmed: the literal string `'Other'`
       exists in the CSV **and** `OneHotEncoder(max_categories=11)` builds its own
       `Country_infrequent_sklearn` bucket, so two "everything else" columns compete and
       `metadata.json` lists both. Decide which one owns unseen values, and make it explicit.
-- [ ] **1.5 Do not run a hyperparameter search.** Your audit already compared three
+- [🗸] **1.5 Do not run a hyperparameter search.** Your audit already compared three
       configurations and the shipped one won. Record that in an ADR as "search performed,
       defaults retained, evidence attached" rather than adding a grid search that will find the
       same answer more slowly.
