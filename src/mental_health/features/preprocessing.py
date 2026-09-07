@@ -2,7 +2,7 @@
 
 from sklearn.pipeline import Pipeline
 
-from sklearn.preprocessing import StandardScaler,OrdinalEncoder,OneHotEncoder
+from sklearn.preprocessing import StandardScaler,OrdinalEncoder,OneHotEncoder,FunctionTransformer
 from sklearn.compose import ColumnTransformer
 
 # Defined Buckets
@@ -14,6 +14,27 @@ ordinal_bucket = ["Stress_Level"]
 nominal_bucket = ["Gender", "Academic_Level", "Most_Used_Platform", "Purpose_Of_Use"]
 
 country_bucket = ["Country"] # high cardinality, apna alag treatment (dekho ADR 0001)
+
+# Countries frequent enough (>= ~80 rows in the dataset) to be their own signal.
+# Everything else — rare countries, the literal "Other" already in the CSV, AND any
+# unseen country at serve time — collapses into ONE "Other" bucket. This list is
+# frozen from a one-time frequency inspection (a human decision, like the ordinal
+# order below), NOT read from data at fit time — so nothing leaks per fit.
+# Fixes the old DOUBLE catch-all: previously Country_Other (literal) and
+# Country_infrequent_sklearn (max_categories bucket) competed as two "misc" columns.
+# See CLOSEOUT 1.4 / ADR 0005.
+KNOWN_COUNTRIES = ["Australia", "Canada", "France", "Germany", "India",
+                    "Ireland", "Mexico", "Spain", "Turkey", "UK", "USA"]
+
+
+def _collapse_country(X):
+    """Map any country not in KNOWN_COUNTRIES (incl. literal 'Other' and unseen) to 'Other'.
+
+    X is a DataFrame with the single 'Country' column; returns the same shape so the
+    OneHotEncoder downstream sees one clean column with a bounded set of categories.
+    """
+    col = X["Country"].where(X["Country"].isin(KNOWN_COUNTRIES), "Other")
+    return col.to_frame()
 
 
 
@@ -48,10 +69,12 @@ def build_preprocessor()->ColumnTransformer:
 
     country_pipeline = Pipeline(
         steps=[
-            ('encode', OneHotEncoder(
-                handle_unknown="infrequent_if_exist",
-                max_categories=11
-            ))
+            # First collapse rare/unseen/'Other' into a single 'Other', THEN one-hot.
+            # handle_unknown='ignore' is a belt-and-suspenders: after collapse every
+            # value is either a KNOWN_COUNTRY or 'Other', so nothing unknown should
+            # reach the encoder — but if it did, it becomes all-zeros instead of raising.
+            ('collapse', FunctionTransformer(_collapse_country, feature_names_out="one-to-one")),
+            ('encode', OneHotEncoder(handle_unknown="ignore")),
         ]
     )
 
