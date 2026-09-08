@@ -25,11 +25,11 @@ Exact duplicate rows: **2** (train.py calls remove_duplicates, so training sees 
 | Stress_Level | 4 |  |
 | Mental_Health_Score | 59 |  |
 
-### Does the literal string 'Other' exist as a Country value?
+### Country bucket behavior
 
 `'Other' in Country`: **True**  (distinct countries: 111)
 
-> If True, this is a real bug. `preprocessing.py` uses `OneHotEncoder(handle_unknown='infrequent_if_exist', max_categories=11)`, which creates its own `Country_infrequent_sklearn` bucket. You now have **two** catch-all buckets competing: the literal `Other` category from the CSV and sklearn's infrequent bucket. metadata.json shows both feature names.
+> The current preprocessor intentionally maps every non-known country, including the literal `Other` and unseen serving values, into one `Other` bucket before one-hot encoding. The earlier two-bucket behavior is historical; see ADR 0005.
 
 ### Target granularity — the generated-data tell
 
@@ -50,26 +50,26 @@ min=3.6  max=9.4  mean=6.2310  std=1.2786  distinct=59
 
 train **2998** / validation **1000** / test **1000** (test is fit-once and deliberately untouched below)
 
-> `train.py` makes a single 70/30 split, computes metrics on the 30%, then hands those metrics to `gate()` which decides whether to save. The split it reports is the split it selects on, so `test r2 = 0.890` in metadata.json is a selection score, not a held-out score. Every re-run after a failed gate leaks a little more.
+> The current release pipeline holds out 20% as `test_final`, runs its CV gate on the remaining 80%, and records the full fold list in metadata. The historic 0.890 single-split result is retained as a lucky-split lesson, not a current release metric.
 
 ## 2. What the model earns over trivial baselines
 
 All rows below are fit on the SAME train split and scored on the SAME
-validation split. `train.py` reports 0.890 r2 — the question is how much
-of that a five-line model already gives you for free.
+validation split. These are diagnostic benchmarks, not the release gate;
+the release records its own cross-validation and final-test metrics.
 
 | model | val r2 | val MAE | val RMSE |
 |---|---|---|---|
 | DummyRegressor(mean)                   | -0.0005 |  1.0536 |  1.2679 |
-| LinearRegression                       |  0.7309 |  0.5217 |  0.6575 |
-| DecisionTree(max_depth=3)              |  0.7166 |  0.5155 |  0.6748 |
-| DecisionTree(max_depth=6)              |  0.7559 |  0.4618 |  0.6263 |
-| RandomForest — YOUR config             |  0.8624 |  0.3441 |  0.4701 |
-| RandomForest(min_samples_leaf=5)       |  0.8295 |  0.3932 |  0.5233 |
-| RandomForest(min_samples_leaf=20)      |  0.7849 |  0.4592 |  0.5879 |
+| LinearRegression                       |  0.7239 |  0.5212 |  0.6660 |
+| DecisionTree(max_depth=3)              |  0.7140 |  0.5160 |  0.6779 |
+| DecisionTree(max_depth=6)              |  0.7509 |  0.4740 |  0.6326 |
+| RandomForest — YOUR config             |  0.8574 |  0.3519 |  0.4786 |
+| RandomForest(min_samples_leaf=5)       |  0.8266 |  0.3980 |  0.5278 |
+| RandomForest(min_samples_leaf=20)      |  0.7843 |  0.4566 |  0.5887 |
 
-- Predicting the mean gives MAE **1.0536**. Your model gives **0.3441** — a **67.3%** reduction. That is the only honest way to state the result.
-- LinearRegression reaches **84.7%** of your r2. A depth-3 tree reaches **83.1%**.
+- Predicting the mean gives MAE **1.0536**. Your model gives **0.3519** — a **66.6%** reduction. That is the only honest way to state the result.
+- LinearRegression reaches **84.4%** of your r2. A depth-3 tree reaches **83.3%**.
 - If those percentages are high, the ensemble is not where your value is, and 'RandomForest' is not the interesting sentence on your resume.
 
 ## 3. Ablations — what each block of feature engineering bought
@@ -78,48 +78,48 @@ ADR 0001 spends real effort on encoding 111 countries. This measures it.
 
 | feature set | val r2 | val MAE | delta r2 vs full |
 |---|---|---|---|
-| FULL (all 12 raw columns)              |  0.8624 |  0.3441 | +0.0000 |
-| drop Country                           |  0.8378 |  0.3859 | -0.0247 |
-| drop Stress_Level                      |  0.8608 |  0.3463 | -0.0017 |
-| drop Most_Used_Platform                |  0.8563 |  0.3551 | -0.0061 |
-| drop Country + Platform + Purpose      |  0.8072 |  0.4236 | -0.0552 |
-| drop Age                               |  0.8574 |  0.3501 | -0.0050 |
+| FULL (all 12 raw columns)              |  0.8574 |  0.3519 | +0.0000 |
+| drop Country                           |  0.8378 |  0.3859 | -0.0197 |
+| drop Stress_Level                      |  0.8559 |  0.3528 | -0.0016 |
+| drop Most_Used_Platform                |  0.8480 |  0.3656 | -0.0095 |
+| drop Country + Platform + Purpose      |  0.8072 |  0.4236 | -0.0502 |
+| drop Age                               |  0.8519 |  0.3586 | -0.0055 |
 
 > Any row whose delta is near zero is feature work that earned nothing. Say so in the README rather than letting an interviewer find it.
 
-## 4. The overfitting check in gate.py
+## 4. Historical train-validation gap diagnostic
 
-train: r2=0.9810 mae=0.1257
-val:   r2=0.8624 mae=0.3441
+train: r2=0.9803 mae=0.1275
+val:   r2=0.8574 mae=0.3519
 
-- `gate.py` statistic: `abs(train_r2 - val_r2)` = **0.1186** vs threshold 0.15 -> **PASSES**
-- MAE ratio val/train = **2.74x**
+- Removed statistic: `abs(train_r2 - val_r2)` = **0.1228** vs threshold 0.15 -> **PASSES**
+- MAE ratio val/train = **2.76x**
 
-> These two statistics disagree. r2 is bounded and compresses differences at the top of its range, so a large relative error gap can still show a small r2 gap. `RandomForestRegressor()` defaults to `max_depth=None, min_samples_leaf=1` — it grows every tree until leaves are pure, so a very high train r2 is memorisation, not fit quality. The MAE ratio is the diagnostic that sees it.
+> This section explains why the old check was removed. These two statistics disagree. r2 is bounded and compresses differences at the top of its range, so a large relative error gap can still show a small r2 gap. `RandomForestRegressor()` defaults to `max_depth=None, min_samples_leaf=1` -- it grows every tree until leaves are pure, so a very high train r2 is memorisation, not fit quality. The current gate uses CV MAE mean plus standard deviation instead.
 
-## 5. Cross-validated estimate (absent from the repo)
+## 5. Cross-validated diagnostic estimate
 
-5-fold r2 on the train split:  mean **0.8555**  std **0.0111**  folds [0.8696, 0.8635, 0.8587, 0.8452, 0.8402]
-5-fold MAE on the train split: mean **0.3568**  std **0.0114**
+5-fold r2 on the train split:  mean **0.8527**  std **0.0124**  folds [0.8655, 0.8656, 0.8558, 0.8409, 0.8355]
+5-fold MAE on the train split: mean **0.3596**  std **0.0132**
 
-> Report `0.855 +/- 0.011` instead of a bare point estimate. A single split gives you one draw from this distribution, and `gate.py` currently promotes or blocks a model on that one draw.
+> Report `0.853 +/- 0.012` instead of a bare point estimate. This audit uses its 60% training partition; the release gate uses 5-fold CV on the remaining 80% after its final test holdout is set aside.
 
 ## 6. Permutation importance (validation split, 10 repeats)
 
 | raw column | mean r2 drop when shuffled | std |
 |---|---|---|
-| Avg_Daily_Usage_Hours | +0.9273 | 0.0386 |
-| Sleep_Hours_Per_Night | +0.2292 | 0.0182 |
-| Country | +0.0913 | 0.0038 |
-| Daily_Unlocks | +0.0438 | 0.0026 |
-| Most_Used_Platform | +0.0371 | 0.0029 |
-| Study_Hours | +0.0250 | 0.0019 |
-| Purpose_Of_Use | +0.0210 | 0.0021 |
-| Age | +0.0175 | 0.0013 |
-| Physical_Activity_Hours | +0.0149 | 0.0017 |
-| Gender | +0.0111 | 0.0013 |
-| Stress_Level | +0.0058 | 0.0006 |
-| Academic_Level | +0.0057 | 0.0004 |
+| Avg_Daily_Usage_Hours | +0.9951 | 0.0414 |
+| Sleep_Hours_Per_Night | +0.2169 | 0.0178 |
+| Country | +0.0581 | 0.0037 |
+| Daily_Unlocks | +0.0466 | 0.0019 |
+| Most_Used_Platform | +0.0432 | 0.0026 |
+| Study_Hours | +0.0264 | 0.0020 |
+| Purpose_Of_Use | +0.0244 | 0.0029 |
+| Physical_Activity_Hours | +0.0189 | 0.0026 |
+| Age | +0.0187 | 0.0015 |
+| Gender | +0.0136 | 0.0017 |
+| Academic_Level | +0.0071 | 0.0007 |
+| Stress_Level | +0.0069 | 0.0009 |
 
 > Columns at or below zero contribute nothing on unseen data. This is computed on raw columns, so it answers the interview question directly: *which inputs actually matter, and how do you know?*
 
@@ -127,15 +127,15 @@ val:   r2=0.8624 mae=0.3441
 
 | train fraction | n rows | val r2 | val MAE |
 |---|---|---|---|
-| 25% | 749 | 0.7890 | 0.4503 |
-| 50% | 1499 | 0.8209 | 0.4074 |
-| 75% | 2248 | 0.8466 | 0.3709 |
-| 100% | 2998 | 0.8624 | 0.3441 |
+| 25% | 749 | 0.7763 | 0.4587 |
+| 50% | 1499 | 0.8135 | 0.4083 |
+| 75% | 2248 | 0.8391 | 0.3770 |
+| 100% | 2998 | 0.8574 | 0.3519 |
 
 > If val r2 has flattened by 75%, more rows will not help and the remaining error is irreducible noise in the target. That is the honest ceiling.
 
 ## Artifact provenance
 
-- `latest.txt` -> `20260831T055753Z`
-- recorded commit `b6c188a50806`, **dirty = True**
-- > `dirty: true` means the working tree had uncommitted changes when this model was trained. The commit hash in the artifact therefore does **not** identify the code that produced it, so the provenance record you built cannot be used to reproduce the model. `save_artifact` should refuse to write when the tree is dirty.
+- `latest.txt` -> `20260908T061824666806Z-4888d94c`
+- recorded commit `e60fcbf5b2b5`, **dirty = False**
+- manifest present = **True**
