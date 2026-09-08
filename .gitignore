@@ -64,6 +64,8 @@ desktop.ini
 # for `train.py` to write to.
 /artifacts/*
 !/artifacts/.gitkeep
+/runtime/*
+!/runtime/.gitkeep
 *.pkl
 *.joblib
 *.h5

@@ -99,7 +99,15 @@ make test
 make serve
 ```
 
-`make serve` builds the code-only Docker image and mounts `artifacts/` read-only. The API exposes `GET /healthz` for process liveness, `GET /readyz` for model readiness, and `POST /predict` for validated predictions.
+`make serve` builds the code-only Docker image, mounts `artifacts/` read-only, and mounts `runtime/` read-write. The API exposes `GET /healthz` for process liveness, `GET /readyz` for model readiness, and `POST /predict` for validated predictions.
+
+## Prediction Audit Log
+
+Every successful `POST /predict` appends an SQLite record to `runtime/predictions.sqlite3`: timestamp, validated input JSON, score, model version, and model-path latency. The directory is a Docker volume mount, so `docker run --rm` does not discard it. Logging failure is recorded in the server log but does not turn an otherwise successful prediction into a 500 response.
+
+The record deliberately contains the input fields required by the close-out experiment. It is appropriate only for local educational testing. A public service handling real people would need a consent decision, retention policy, access control, and likely redaction or a different audit design before storing this data.
+
+The full design rationale, alternatives, failure modes, evidence, and known limits are in [Phase 3.1: Durable Prediction Logging](docs/insights/phase-3-1-prediction-log.md).
 
 ## Release Contract
 
