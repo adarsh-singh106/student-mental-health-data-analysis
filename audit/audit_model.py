@@ -83,18 +83,16 @@ def section_data_forensics() -> None:
         say(f"| {k} | {len(vals)} | {flag} |")
     say()
 
-    say("### Does the literal string 'Other' exist as a Country value?")
+    say("### Country bucket behavior")
     say()
     countries = {r["Country"] for r in rows}
     has_other = "Other" in countries
     say(f"`'Other' in Country`: **{has_other}**  (distinct countries: {len(countries)})")
     if has_other:
         say()
-        say("> If True, this is a real bug. `preprocessing.py` uses "
-            "`OneHotEncoder(handle_unknown='infrequent_if_exist', max_categories=11)`, "
-            "which creates its own `Country_infrequent_sklearn` bucket. You now have "
-            "**two** catch-all buckets competing: the literal `Other` category from the "
-            "CSV and sklearn's infrequent bucket. metadata.json shows both feature names.")
+        say("> The current preprocessor intentionally maps every non-known country, including "
+            "the literal `Other` and unseen serving values, into one `Other` bucket before "
+            "one-hot encoding. The earlier two-bucket behavior is historical; see ADR 0005.")
     say()
 
     say("### Target granularity — the generated-data tell")
@@ -126,8 +124,8 @@ def section_baselines(X_tr, y_tr, X_va, y_va):
     say("## 2. What the model earns over trivial baselines")
     say()
     say("All rows below are fit on the SAME train split and scored on the SAME")
-    say("validation split. `train.py` reports 0.890 r2 — the question is how much")
-    say("of that a five-line model already gives you for free.")
+    say("validation split. These are diagnostic benchmarks, not the release gate;")
+    say("the release records its own cross-validation and final-test metrics.")
     say()
     say("| model | val r2 | val MAE | val RMSE |")
     say("|---|---|---|---|")
@@ -206,10 +204,10 @@ def section_ablations(X_tr, y_tr, X_va, y_va, baseline_r2: float):
 
 
 # ----------------------------------------------------------------------------
-# 4. THE OVERFIT QUESTION gate.py IS ASKING WRONG
+# 4. HISTORICAL TRAIN-VALIDATION GAP DIAGNOSTIC
 # ----------------------------------------------------------------------------
 def section_overfit(X_tr, y_tr, X_va, y_va):
-    say("## 4. The overfitting check in gate.py")
+    say("## 4. Historical train-validation gap diagnostic")
     say()
     pipe = Pipeline([("prep", build_preprocessor()),
                      ("model", RandomForestRegressor(random_state=SEED, n_jobs=1))])
@@ -218,24 +216,25 @@ def section_overfit(X_tr, y_tr, X_va, y_va):
     say(f"train: r2={tr['r2']:.4f} mae={tr['mae']:.4f}")
     say(f"val:   r2={va['r2']:.4f} mae={va['mae']:.4f}")
     say()
-    say(f"- `gate.py` statistic: `abs(train_r2 - val_r2)` = **{abs(tr['r2'] - va['r2']):.4f}** "
+    say(f"- Removed statistic: `abs(train_r2 - val_r2)` = **{abs(tr['r2'] - va['r2']):.4f}** "
         f"vs threshold 0.15 -> **{'PASSES' if abs(tr['r2']-va['r2'])<0.15 else 'FAILS'}**")
     say(f"- MAE ratio val/train = **{va['mae'] / tr['mae']:.2f}x**")
     say()
-    say("> These two statistics disagree. r2 is bounded and compresses differences at "
+    say("> This section explains why the old check was removed. These two statistics disagree. "
+        "r2 is bounded and compresses differences at "
         "the top of its range, so a large relative error gap can still show a small "
         "r2 gap. `RandomForestRegressor()` defaults to `max_depth=None, "
-        "min_samples_leaf=1` — it grows every tree until leaves are pure, so a very "
-        "high train r2 is memorisation, not fit quality. The MAE ratio is the "
-        "diagnostic that sees it.")
+        "min_samples_leaf=1` -- it grows every tree until leaves are pure, so a very "
+        "high train r2 is memorisation, not fit quality. The current gate uses CV MAE "
+        "mean plus standard deviation instead.")
     say()
 
 
 # ----------------------------------------------------------------------------
-# 5. CROSS-VALIDATION — the number that is missing from the repo entirely
+# 5. CROSS-VALIDATED DIAGNOSTIC ESTIMATE
 # ----------------------------------------------------------------------------
 def section_cv(X_tr, y_tr):
-    say("## 5. Cross-validated estimate (absent from the repo)")
+    say("## 5. Cross-validated diagnostic estimate")
     say()
     pipe = Pipeline([("prep", build_preprocessor()),
                      ("model", RandomForestRegressor(random_state=SEED, n_jobs=1))])
@@ -247,8 +246,8 @@ def section_cv(X_tr, y_tr):
     say(f"5-fold MAE on the train split: mean **{mae.mean():.4f}**  std **{mae.std():.4f}**")
     say()
     say(f"> Report `{scores.mean():.3f} +/- {scores.std():.3f}` instead of a bare "
-        "point estimate. A single split gives you one draw from this distribution, "
-        "and `gate.py` currently promotes or blocks a model on that one draw.")
+        "point estimate. This audit uses its 60% training partition; the release gate "
+        "uses 5-fold CV on the remaining 80% after its final test holdout is set aside.")
     say()
 
 
@@ -308,8 +307,8 @@ def main() -> None:
     df = prepare_data(CSV)
     X, y = df.drop(columns=[TARGET]), df[TARGET]
 
-    # THREE-way split. train.py only makes two, which is the core methodology defect:
-    # it selects on the same split it reports.
+    # Fixed three-way split for diagnostic comparisons. The release pipeline also
+    # holds out a final test set before it performs its CV release gate.
     X_tmp, X_te, y_tmp, y_te = train_test_split(X, y, test_size=0.20, random_state=SEED)
     X_tr, X_va, y_tr, y_va = train_test_split(X_tmp, y_tmp, test_size=0.25, random_state=SEED)
     say("## Splits used by this audit")
@@ -317,11 +316,10 @@ def main() -> None:
     say(f"train **{len(X_tr)}** / validation **{len(X_va)}** / test **{len(X_te)}** "
         "(test is fit-once and deliberately untouched below)")
     say()
-    say("> `train.py` makes a single 70/30 split, computes metrics on the 30%, then "
-        "hands those metrics to `gate()` which decides whether to save. The split it "
-        "reports is the split it selects on, so `test r2 = 0.890` in metadata.json is "
-        "a selection score, not a held-out score. Every re-run after a failed gate "
-        "leaks a little more.")
+    say("> The current release pipeline holds out 20% as `test_final`, runs its CV gate "
+        "on the remaining 80%, and records the full fold list in metadata. The historic "
+        "0.890 single-split result is retained as a lucky-split lesson, not a current "
+        "release metric.")
     say()
 
     res = section_baselines(X_tr, y_tr, X_va, y_va)
@@ -335,17 +333,22 @@ def main() -> None:
     say()
     latest = (ROOT / "artifacts" / "latest.txt")
     if latest.exists():
-        v = latest.read_text().strip()
-        meta = json.loads((ROOT / "artifacts" / v / "metadata.json").read_text())
-        say(f"- `latest.txt` -> `{v}`")
-        say(f"- recorded commit `{meta['git']['commit'][:12]}`, "
-            f"**dirty = {meta['git']['dirty']}**")
-        if meta["git"]["dirty"]:
-            say("- > `dirty: true` means the working tree had uncommitted changes when "
-                "this model was trained. The commit hash in the artifact therefore does "
-                "**not** identify the code that produced it, so the provenance record "
-                "you built cannot be used to reproduce the model. `save_artifact` should "
-                "refuse to write when the tree is dirty.")
+        try:
+            v = latest.read_text().strip()
+            artifact_dir = ROOT / "artifacts" / v
+            meta = json.loads((artifact_dir / "metadata.json").read_text())
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            say(f"- Artifact provenance could not be read: {type(exc).__name__}")
+        else:
+            say(f"- `latest.txt` -> `{v}`")
+            say(f"- recorded commit `{meta['git']['commit'][:12]}`, "
+                f"**dirty = {meta['git']['dirty']}**")
+            say(f"- manifest present = **{(artifact_dir / 'manifest.json').is_file()}**")
+            if meta["git"]["dirty"]:
+                say("- > `dirty: true` means the working tree had uncommitted changes when "
+                    "this model was trained. The commit hash in the artifact therefore does "
+                    "**not** identify the code that produced it, so the provenance record "
+                    "cannot reproduce the model.")
     say()
 
     out = ROOT / "audit" / "REPORT_model.md"
