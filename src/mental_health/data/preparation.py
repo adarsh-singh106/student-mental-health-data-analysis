@@ -5,14 +5,17 @@ the first thing i would need is data itself ! and i think i must not hard code t
 so instead i can just ask for the data or the path itself . let me see which one would be best . 
 i think i should take the path and load data as loading the data is my responsiblity !so even if i am getting DF then that program has to read it"""
 
+from pathlib import Path
+
 import pandas as pd
 
 
 from mental_health.data.cleaning import fix_physical_activity_hours,remove_duplicates
+from mental_health.data.schema import validate_column_contract
 from mental_health.data.validation import validate_df
 
 
-def load_data(path:str)-> pd.DataFrame:
+def load_data(path: str | Path) -> pd.DataFrame:
     ## Load the data & if path invalid raise error
     try:
         raw_df = pd.read_csv(path)
@@ -25,8 +28,11 @@ def load_data(path:str)-> pd.DataFrame:
         raise
 
 
-def prepare_data(path:str)->pd.DataFrame:
+def prepare_data(path: str | Path) -> pd.DataFrame:
     raw_df = load_data(path)
+
+    # Structural validation must happen before cleaning indexes a named column.
+    validate_column_contract(raw_df)
 
     ## apply cleaning
     raw_df = remove_duplicates(raw_df) 

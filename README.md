@@ -34,3 +34,42 @@ into the model's metadata, which only makes sense inside a real git repo — the
 shipped image carries none. The reasoning is written out in the `Makefile`.
 
 See `data/PROVENANCE.md` for where the dataset came from and how it is verified.
+
+To override the default input or artifact location without editing source:
+
+```bash
+make train DATA_PATH="C:/data/input.csv" ARTIFACTS_ROOT="C:/model-releases"
+```
+
+## Release Contract
+
+`make train` runs an explicit release boundary:
+
+```text
+CSV path -> prepare -> train -> CV gate -> immutable artifact directory
+```
+
+Each newly published directory contains `model.joblib`, `metadata.json`, and
+`manifest.json`. Metadata records the source commit, input SHA-256,
+dependency-lock digest, metrics, model parameters, and feature-schema version.
+The manifest records SHA-256 and byte-size facts for the model and metadata.
+
+The release is assembled in a staging directory, then published before
+`latest.txt` moves to it. Serving verifies a new-format manifest before model
+deserialization, so a modified or incomplete artifact becomes a readiness
+failure rather than a silent prediction change. These hashes detect accidental
+corruption; artifact storage must still be trusted because a hash is not a
+signature.
+
+### Running Without Make
+
+`make` is optional convenience tooling. On Windows PowerShell or any machine
+without GNU Make, use the underlying commands directly:
+
+```powershell
+uv run --frozen python -m mental_health.models.release `
+  --data-path "data/raw/Student Social Media And Mental Health Impact.csv" `
+  --artifacts-root artifacts
+
+uv run --frozen pytest
+```

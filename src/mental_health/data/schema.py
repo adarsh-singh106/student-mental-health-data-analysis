@@ -17,6 +17,57 @@ VALID_PURPOSES = ["Networking", "Education", "Entertainment", "News"]
  
 VALID_STRESS_LEVELS = ["Low", "Medium", "High", "Very High"]
 
+# This version describes the raw feature contract shared by training and
+# serving. Bump it whenever a feature is added, removed, renamed, or changes
+# meaning; every new artifact records the value next to its feature names.
+FEATURE_SCHEMA_VERSION = "1.0.0"
+TARGET_COLUMN = "Mental_Health_Score"
+FEATURE_COLUMNS = [
+    "Age",
+    "Gender",
+    "Country",
+    "Academic_Level",
+    "Most_Used_Platform",
+    "Purpose_Of_Use",
+    "Avg_Daily_Usage_Hours",
+    "Daily_Unlocks",
+    "Study_Hours",
+    "Physical_Activity_Hours",
+    "Sleep_Hours_Per_Night",
+    "Stress_Level",
+]
+EXPECTED_COLUMNS = [*FEATURE_COLUMNS, TARGET_COLUMN]
+
+
+class DataContractError(ValueError):
+    """Raised when an input file cannot reach the cleaning pipeline safely."""
+
+
+def validate_column_contract(raw_df: pd.DataFrame) -> None:
+    """Reject structural schema drift before cleaning accesses named columns.
+
+    The cleaning rule for negative activity hours deliberately runs before the
+    full Pandera value validation. This lightweight first check makes missing,
+    extra, and duplicate columns a clear contract failure instead of a later
+    accidental ``KeyError`` or silent ignore.
+    """
+    actual_columns = list(raw_df.columns)
+    expected_columns = set(EXPECTED_COLUMNS)
+    actual_set = set(actual_columns)
+    missing = sorted(expected_columns - actual_set)
+    unexpected = sorted(actual_set - expected_columns)
+    duplicates = sorted(raw_df.columns[raw_df.columns.duplicated()].unique())
+
+    if missing or unexpected or duplicates:
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if unexpected:
+            details.append(f"unexpected={unexpected}")
+        if duplicates:
+            details.append(f"duplicate={duplicates}")
+        raise DataContractError("Raw dataset column contract failed: " + "; ".join(details))
+
 
 class SocialMediaUsageSchema(pa.DataFrameModel):
     """Schema for Validating the social media usage survey export."""

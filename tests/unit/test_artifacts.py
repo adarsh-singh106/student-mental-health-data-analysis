@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
-from mental_health.models.save import save_artifact
+from mental_health.models.save import ArtifactPublicationError, save_artifact
 
 # A. Raise tests (No real Model or Pipeline required)
 
@@ -27,6 +27,12 @@ def test_empty_latest_txt_raises(tmp_path):
 def test_version_dir_missing_raises(tmp_path):
     (tmp_path / "latest.txt").write_text("v1")  # par tmp_path/v1 dir banaya hi nahi
     with pytest.raises(ArtifactLoadError):
+        load_latest_artifact(tmp_path)
+
+
+def test_latest_pointer_cannot_escape_artifact_root(tmp_path):
+    (tmp_path / "latest.txt").write_text("../outside")
+    with pytest.raises(ArtifactLoadError, match="invalid release id"):
         load_latest_artifact(tmp_path)
 
 
@@ -63,7 +69,7 @@ def test_save_then_load_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False) # Don't ask git
     monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit") # git binary bhi mat maango
     metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
-    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc"}
+    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc", "schema_version": "1.0.0"}
     save_artifact(make_fitted_pipe(), metrics, dataset, artifacts_root=tmp_path)
 
     result = load_latest_artifact(tmp_path)
@@ -72,3 +78,41 @@ def test_save_then_load_roundtrip(tmp_path, monkeypatch):
     assert result["metadata"]["features"]["count"] == 2      # a, b
     assert result["metadata"]["metrics"] == metrics           # metrics metadata ke andar hai
     assert result["version"] == result["metadata"]["model_version"]
+    assert result["integrity_verified"] is True
+    assert result["manifest"]["release_id"] == result["version"]
+
+
+def test_manifest_detects_a_corrupted_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False)
+    monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit")
+    metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
+    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc", "schema_version": "1.0.0"}
+    saved = save_artifact(make_fitted_pipe(), metrics, dataset, artifacts_root=tmp_path)
+
+    (saved.path / "model.joblib").write_bytes(b"corrupted after publication")
+
+    with pytest.raises(ArtifactLoadError, match="integrity check failed"):
+        load_latest_artifact(tmp_path)
+
+
+def test_verified_artifact_rejects_an_incompatible_feature_schema(tmp_path, monkeypatch):
+    monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False)
+    monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit")
+    metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
+    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc", "schema_version": "999.0.0"}
+    save_artifact(make_fitted_pipe(), metrics, dataset, artifacts_root=tmp_path)
+
+    with pytest.raises(ArtifactLoadError, match="feature schema"):
+        load_latest_artifact(tmp_path)
+
+
+def test_publish_requires_a_feature_schema_version(tmp_path, monkeypatch):
+    monkeypatch.setattr("mental_health.models.save._git_dirty", lambda: False)
+    monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit")
+    metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
+    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc"}
+
+    with pytest.raises(ArtifactPublicationError, match="schema version"):
+        save_artifact(make_fitted_pipe(), metrics, dataset, artifacts_root=tmp_path)
+
+    assert list(tmp_path.iterdir()) == []

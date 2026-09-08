@@ -33,7 +33,7 @@ def test_save_artifact_writes_files(tmp_path, monkeypatch):
     monkeypatch.setattr("mental_health.models.save._git_commit", lambda: "test-commit") # git binary bhi mat maango
     pipe = make_fitted_pipe()
     metrics = {"train": {"r2": 0.98}, "test": {"r2": 0.89}}
-    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc"}
+    dataset = {"file": "x.csv", "rows": 3, "sha256": "abc", "schema_version": "1.0.0"}
 
     save_artifact(pipe, metrics, dataset, artifacts_root=tmp_path)
 
@@ -44,6 +44,7 @@ def test_save_artifact_writes_files(tmp_path, monkeypatch):
 
     assert (folder / "model.joblib").exists()
     assert (folder / "metadata.json").exists()
+    assert (folder / "manifest.json").exists()
     assert (tmp_path / "latest.txt").read_text() == folder.name
 
     # Assert : content of metadata.json
@@ -52,4 +53,5 @@ def test_save_artifact_writes_files(tmp_path, monkeypatch):
     assert meta["features"]["count"] == 2      # a, b → 2 columns
     assert meta["gate"]["passed"] is True
     assert meta["metrics"] == metrics
-    
+    assert meta["artifact"]["contract_version"] == 1
+    assert meta["env"]["uv_lock_sha256"]

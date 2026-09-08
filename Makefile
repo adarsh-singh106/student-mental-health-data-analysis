@@ -13,13 +13,17 @@
 # (CI additionally builds the image and runs pytest inside it — .github/workflows.)
 
 IMAGE := mental-health
+DATA_PATH ?= $(CURDIR)/data/raw/Student Social Media And Mental Health Impact.csv
+ARTIFACTS_ROOT ?= $(CURDIR)/artifacts
 
 .PHONY: train test build serve
 
-# Host: needs data/raw/ present (see scripts/fetch_data.py) and a clean git tree
-# (save.py refuses to write a model from a dirty tree, so provenance stays honest).
+# Host: needs an explicit data path (see scripts/fetch_data.py) and a clean Git
+# tree. The release CLI records both the input hash and an artifact manifest.
+# Override either path without editing source, for example:
+#   make train DATA_PATH="C:/data/input.csv" ARTIFACTS_ROOT="C:/releases"
 train:
-	uv run --frozen python -m mental_health.models.train
+	uv run --frozen python -m mental_health.models.release --data-path "$(DATA_PATH)" --artifacts-root "$(ARTIFACTS_ROOT)"
 
 test:
 	uv run --frozen pytest
@@ -32,5 +36,5 @@ build:
 serve: build
 	docker run --rm \
 		-p 8000:8000 \
-		-v "$(CURDIR)/artifacts:/app/artifacts:ro" \
+		-v "$(ARTIFACTS_ROOT):/app/artifacts:ro" \
 		$(IMAGE)
