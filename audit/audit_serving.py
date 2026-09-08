@@ -8,6 +8,7 @@ Boots uvicorn on a spare port, measures it, shuts it down. Read-only.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import socket
@@ -20,6 +21,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT: list[str] = []
@@ -157,10 +159,10 @@ def load_level(base: str, concurrency: int, seconds: float):
     }
 
 
-def section_load(base: str, duration: float) -> list[dict]:
+def section_load(base: str, duration: float, workers: int) -> list[dict]:
     say("## Latency and throughput")
     say()
-    say(f"Closed-loop, {duration:.0f}s per level, single uvicorn worker, "
+    say(f"Closed-loop, {duration:.0f}s per level, {workers} uvicorn worker(s), "
         f"{os.cpu_count()} logical CPUs on this machine. Latency in milliseconds.")
     say()
     say("| concurrency | requests | errors | RPS | mean | p50 | p95 | p99 | max |")
@@ -228,6 +230,22 @@ def section_prediction_log(
     say()
 
 
+def section_server_stderr(server_log_path: Path) -> None:
+    say("## Server stderr evidence")
+    say()
+    say(f"- Server stderr path: `{server_log_path}`")
+    try:
+        text = server_log_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        say(f"- Could not read server stderr: `{exc}`")
+    else:
+        write_failures = text.count("Prediction log write failed")
+        say(f"- Prediction-log write failures recorded by the server: **{write_failures}**")
+        say("- Stderr is written to a file instead of an unread subprocess pipe so "
+            "error output cannot block worker processes during the load test.")
+    say()
+
+
 def section_ops_surface() -> None:
     say("## Ops surface")
     say()
@@ -238,8 +256,8 @@ def section_ops_surface() -> None:
         ("CI workflow", ROOT / ".github" / "workflows", "tests and image build run on push and pull requests"),
         ("Makefile / task runner", ROOT / "Makefile", "documents host training, test, and container serving"),
         ("/metrics endpoint", None, "no Prometheus scrape target"),
-        ("structured request logging", None, "a 500 leaves no trace — see the bare "
-         "`except Exception` handler in api/main.py, which returns 500 without logging"),
+        ("structured request logging", ROOT / "src" / "mental_health" / "api" /
+         "structured_logging.py", "unhandled 500 events emit correlated JSON to stderr"),
         ("prediction log / audit trail", ROOT / "src" / "mental_health" / "api" /
          "prediction_log.py", "local SQLite records successful predictions"),
         ("drift monitoring", None, "nothing to compare against a baseline"),
@@ -254,12 +272,101 @@ def section_ops_surface() -> None:
     say()
 
 
-def main() -> None:
-    duration = float(os.environ.get("AUDIT_SECONDS", "8"))
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Measure one local Uvicorn worker configuration."
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of Uvicorn worker processes to start (default: 1).",
+    )
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=None,
+        help="Seconds per concurrency level (default: AUDIT_SECONDS or 8).",
+    )
+    parser.add_argument(
+        "--log-path",
+        type=Path,
+        default=None,
+        help="SQLite path for this audit run (default: separate path per worker count).",
+    )
+    parser.add_argument(
+        "--report-path",
+        type=Path,
+        default=None,
+        help="Markdown output path (default: separate report per worker count).",
+    )
+    parser.add_argument(
+        "--server-log-path",
+        type=Path,
+        default=None,
+        help="Server stderr path (default: separate ignored file per worker count).",
+    )
+    return parser
+
+
+def _default_log_path(workers: int) -> Path:
+    return ROOT / "runtime" / f"serving-audit-workers-{workers}.sqlite3"
+
+
+def _default_report_path(workers: int) -> Path:
+    if workers == 1:
+        return ROOT / "audit" / "REPORT_serving.md"
+    return ROOT / "audit" / f"REPORT_serving-workers-{workers}.md"
+
+
+def _default_server_log_path(workers: int) -> Path:
+    return ROOT / "runtime" / f"serving-audit-workers-{workers}.stderr.log"
+
+
+def stop_server(proc: subprocess.Popen) -> None:
+    """Stop the Uvicorn supervisor and every worker it started.
+
+    On Windows, terminating only the supervisor leaves spawned worker processes
+    alive. Those workers consume CPU and contaminate the next benchmark.
+    """
+    if proc.poll() is not None:
+        return
+
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        proc.terminate()
+
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = _build_parser().parse_args(argv)
+    if args.workers < 1:
+        raise SystemExit("--workers must be at least 1")
+
+    duration = args.seconds if args.seconds is not None else float(
+        os.environ.get("AUDIT_SECONDS", "8")
+    )
+    if duration <= 0:
+        raise SystemExit("--seconds must be greater than 0")
+
+    workers = args.workers
     port = free_port()
     base = f"http://127.0.0.1:{port}"
-    log_path = Path(
-        os.environ.get("PREDICTION_LOG_PATH", ROOT / "runtime" / "serving-audit.sqlite3")
+    log_path = (args.log_path or _default_log_path(workers)).expanduser().resolve()
+    report_path = (args.report_path or _default_report_path(workers)).expanduser().resolve()
+    server_log_path = (
+        args.server_log_path or _default_server_log_path(workers)
     ).expanduser().resolve()
     previous_log_id = latest_prediction_id(log_path)
     probe_successes = 0
@@ -267,16 +374,21 @@ def main() -> None:
 
     say("# Serving audit")
     say()
+    say(f"- Uvicorn worker processes requested: **{workers}**")
+    say()
     env = {
         **os.environ,
         "PYTHONPATH": str(ROOT / "src"),
         "PREDICTION_LOG_PATH": str(log_path),
     }
     t0 = time.perf_counter()
+    server_log_path.parent.mkdir(parents=True, exist_ok=True)
+    server_stderr = server_log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "mental_health.api.main:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning",
+         "--workers", str(workers)],
+        cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=server_stderr)
 
     ready_at = None
     try:
@@ -292,7 +404,8 @@ def main() -> None:
             if proc.poll() is not None:
                 say("uvicorn exited before becoming ready. stderr:")
                 say("```")
-                say((proc.stderr.read() or b"").decode()[-2000:])
+                server_stderr.flush()
+                say(server_log_path.read_text(encoding="utf-8")[-2000:])
                 say("```")
                 break
             time.sleep(0.25)
@@ -316,13 +429,10 @@ def main() -> None:
                 "that returns 200 unconditionally.")
             say()
             probe_successes = section_probes(base)
-            load_rows = section_load(base, duration)
+            load_rows = section_load(base, duration, workers)
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        stop_server(proc)
+        server_stderr.close()
 
     expected_log_count = probe_successes + sum(
         row["requests"] - row["errors"] for row in load_rows
@@ -332,10 +442,10 @@ def main() -> None:
         expected_log_count,
         prediction_log_count(log_path, previous_log_id),
     )
+    section_server_stderr(server_log_path)
     section_ops_surface()
-    out = ROOT / "audit" / "REPORT_serving.md"
-    out.write_text("\n".join(OUT), encoding="utf-8")
-    print(f"\n>>> wrote {out}")
+    report_path.write_text("\n".join(OUT), encoding="utf-8")
+    print(f"\n>>> wrote {report_path}")
 
 
 if __name__ == "__main__":

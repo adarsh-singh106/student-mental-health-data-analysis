@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import joblib
@@ -28,6 +29,14 @@ class ArtifactLoadError(Exception):
     """Raised when an artifact cannot safely be selected or loaded for serving."""
 
 
+def resolve_artifacts_root() -> Path:
+    """Resolve the primary artifact root without changing the default deployment."""
+    configured_root = os.environ.get("ARTIFACTS_ROOT")
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    return DEFAULT_ARTIFACTS_ROOT
+
+
 def _read_json(path: Path, description: str) -> dict:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -38,9 +47,9 @@ def _read_json(path: Path, description: str) -> dict:
     return value
 
 
-def get_latest_artifact_dir(artifact_root: Path = DEFAULT_ARTIFACTS_ROOT) -> Path:
+def get_latest_artifact_dir(artifact_root: Path | None = None) -> Path:
     """Return the latest artifact directory without allowing pointer traversal."""
-    artifact_root = Path(artifact_root).resolve()
+    artifact_root = Path(artifact_root or resolve_artifacts_root()).resolve()
     latest_path = artifact_root / "latest.txt"
 
     if not latest_path.exists():
@@ -128,7 +137,7 @@ def _verify_runtime_compatibility(metadata: dict) -> None:
         )
 
 
-def load_latest_artifact(artifacts_root: Path = DEFAULT_ARTIFACTS_ROOT) -> dict:
+def load_latest_artifact(artifacts_root: Path | None = None) -> dict:
     """Load the selected artifact after checking layout, integrity, and compatibility."""
     artifact_dir = get_latest_artifact_dir(artifacts_root)
     version = artifact_dir.name

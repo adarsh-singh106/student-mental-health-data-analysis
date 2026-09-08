@@ -1,5 +1,9 @@
 import pytest
-from mental_health.api.artifacts import load_latest_artifact, ArtifactLoadError
+from mental_health.api.artifacts import (
+    ArtifactLoadError,
+    load_latest_artifact,
+    resolve_artifacts_root,
+)
 
 import pandas as pd
 from sklearn.pipeline import Pipeline
@@ -14,6 +18,12 @@ def test_missing_latest_txt_raises(tmp_path):
     # tmp_path khaali hai → latest.txt hai hi nahi
     with pytest.raises(ArtifactLoadError):
         load_latest_artifact(tmp_path)
+
+
+def test_resolve_artifacts_root_uses_an_explicit_environment_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARTIFACTS_ROOT", str(tmp_path / "mounted-artifacts"))
+
+    assert resolve_artifacts_root() == (tmp_path / "mounted-artifacts").resolve()
 
 
 # same check bas is bar file h but empty hone per

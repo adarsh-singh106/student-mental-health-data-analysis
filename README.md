@@ -103,11 +103,24 @@ make serve
 
 ## Prediction Audit Log
 
-Every successful `POST /predict` appends an SQLite record to `runtime/predictions.sqlite3`: timestamp, validated input JSON, score, model version, and model-path latency. The directory is a Docker volume mount, so `docker run --rm` does not discard it. Logging failure is recorded in the server log but does not turn an otherwise successful prediction into a 500 response.
+Every successful `POST /predict` appends an SQLite record to `runtime/predictions.sqlite3`: timestamp, validated input JSON, score, model version, and model-path latency. When an operator enables an optional shadow candidate, the same row also holds nullable candidate version, score, and model-path latency fields. The directory is a Docker volume mount, so `docker run --rm` does not discard it. Logging failure is recorded in the server log but does not turn an otherwise successful prediction into a 500 response.
 
 The record deliberately contains the input fields required by the close-out experiment. It is appropriate only for local educational testing. A public service handling real people would need a consent decision, retention policy, access control, and likely redaction or a different audit design before storing this data.
 
 The full design rationale, alternatives, failure modes, evidence, and known limits are in [Phase 3.1: Durable Prediction Logging](docs/insights/phase-3-1-prediction-log.md).
+
+## Request-Path Experiments
+
+The project intentionally uses this fixed dataset to learn serving behavior rather than pretending it can demonstrate a real data platform. Each experiment below runs against the actual application path and records what failed or saturated.
+
+| Experiment | What was measured | Result and limits |
+|---|---|---|
+| [Worker scaling](docs/insights/phase-3-2-worker-scaling.md) | Four versus eight local Uvicorn workers under closed-loop load | Eight workers peaked at 166.8 req/s at concurrency 16 on this 16-logical-CPU machine. At concurrency 64, p95 was about 3 seconds and best-effort SQLite rows were lost. |
+| [Schema breakage](docs/insights/phase-3-3-schema-breakage.md) | Extra column, missing feature, and non-numeric Age in temporary CSV copies | Structural drift fails before cleaning; non-coercible Age fails in Pandera before sklearn. A cleaner still has a known pre-Pandera type hole. |
+| [Shadow inference](docs/insights/phase-3-4-shadow-serving.md) | Primary versus a separately rooted `min_samples_leaf=5` candidate | 500 primary-only responses produced 500 paired rows. The mean absolute score difference was 0.150538; synthetic requests and no labels mean this is not a promotion result. |
+| [Structured 500 logging](docs/insights/phase-3-5-structured-500-logging.md) | A real inference exception through Uvicorn | The client received a generic 500 plus `X-Request-ID`; one JSON stderr event had the same ID, `RuntimeError`, and a traceback. |
+
+Generated evidence is kept in `audit/REPORT_*.md`. These are local educational measurements, not capacity guarantees or production-SLO claims.
 
 ## Release Contract
 
@@ -139,7 +152,7 @@ The hashes detect accidental corruption. They are not a signature or a substitut
 | Feature store | There are no timestamps, repeated entities, or shared online/offline feature computations to manage. |
 | Canary or A/B rollout | There are no real users to split between models. |
 | Autoscaling or Kubernetes | Traffic is generated only by a local load test, not a varying workload. |
-| Queues and backpressure | The serving audit recorded zero errors through concurrency 64; there is no sustained overload to absorb. |
+| Queues and backpressure | Synthetic worker tests showed tail-latency saturation and SQLite contention, but there is no sustained real workload yet to justify operating queue delivery, retry, and backlog semantics. |
 | Streaming ingestion | Nothing arrives continuously. |
 
 These are explicit scope decisions, not a list of features waiting to be added. The request-path experiments that are real for this repository are tracked in [CLOSEOUT.md](CLOSEOUT.md).
