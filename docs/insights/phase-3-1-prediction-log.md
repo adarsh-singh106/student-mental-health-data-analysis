@@ -166,6 +166,9 @@ The current contract is:
 already passed Pydantic validation. Key sorting makes equivalent validated payloads
 serialize consistently, which improves later comparisons.
 
+Phase 3.4 later added nullable candidate-comparison columns to this local table.
+That extension is documented in [Phase 3.4: Shadow-Run A Candidate Model](phase-3-4-shadow-serving.md); it does not change the original primary-serving fields above.
+
 ### Database Behavior
 
 At application startup, the FastAPI lifespan handler attempts to create the parent
@@ -327,7 +330,7 @@ unjustified stack of tools.
 | SQLite is one-host, one-writer-oriented | More workers or replicas contend on writes; host-local files are not shared. | Multiple Uvicorn workers, container replicas, or more than one host. |
 | Synchronous write on response path | Logging can increase client latency and reduce throughput. | Sustained traffic approaches the measured saturation point. |
 | No backups or replication | Host or volume loss destroys history. | Audit data becomes valuable enough to preserve. |
-| No schema migration strategy | Future table changes may require manual data handling. | The table becomes long-lived or externally consumed. |
+| No general schema migration strategy | Phase 3.4 has one narrow additive migration for three nullable shadow columns, not a versioned migration framework. | The table becomes long-lived or externally consumed. |
 | No labels or outcomes | The table cannot measure prediction accuracy after deployment. | Ground-truth outcomes arrive later with trustworthy joins. |
 
 ## 10. What Would Change In A More Demanding System

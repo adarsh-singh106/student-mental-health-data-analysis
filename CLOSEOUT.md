@@ -165,42 +165,45 @@ These are the production concepts that are **genuinely learnable here**, because
 requests arriving, not about data arriving. Each one must end with a number you measured or an
 error you caused. Write the result in `docs/insights/`.
 
-- [ ] **3.1 Prediction log (~45 min).** Add a SQLite table: `id`, `timestamp`, `input_json`,
+- [x] **3.1 Prediction log (~45 min).** Add a SQLite table: `id`, `timestamp`, `input_json`,
       `output`, `model_version`, `latency_ms`. Write one row per `/predict` call. Then run the
       load test again and query what you captured.
       *Why this is real:* every other monitoring idea needs moving data. This one needs moving
       *requests*, which you have. It is also the thing that, if missing, makes it permanently
       impossible to measure a model after the fact — that door closes as time passes.
-- [ ] **3.2 Worker scaling (~30 min).** Your API peaked at **92.5 req/s** on a machine with 16
+- [x] **3.2 Worker scaling (~30 min).** Your API peaked at **92.5 req/s** on a machine with 16
       logical CPUs, and throughput went *down* past concurrency 4 while p95 climbed from 58.4 ms
       to 804.5 ms at concurrency 64. Re-run `audit/audit_serving.py` against uvicorn started
       with `--workers 4`, then `--workers 8`. Record the new peak.
-      *What you should learn:* one Python process cannot use 16 cores, because only one thread
-      runs Python code at a time. The fix is more processes, not more threads. At concurrency 64
+      *What you should learn:* this model is configured with `n_jobs=1`, and this one-process
+      request path did not expose enough independent model work to use the host efficiently.
+      More processes are one option, but native libraries can use threads too, so measure rather
+      than assuming the GIL gives the answer. At concurrency 64
       almost all of that 800 ms was time spent waiting in a queue, not time spent predicting —
       check it yourself: 64 in flight divided by 87.3 req/s predicts about 0.73 s of latency,
       and the measured mean was 0.709 s. When a queue is the bottleneck, latency grows in
       proportion to how many requests are waiting.
-- [ ] **3.3 Break the schema on purpose (~45 min).** Three separate runs: add a column to the
-      CSV, delete a column, and change `Age` from int to string. Record for each one *where* it
+- [x] **3.3 Break the schema on purpose (~45 min).** Three separate runs: add a column to the
+      CSV, delete a column, and change `Age` to a non-coercible string. Record for each one *where* it
       failed (pandera at load, sklearn at transform, or silently at predict) and *how loud* the
       failure was.
       *What you should learn:* the difference between failing at the front door and failing
       quietly three layers in. The second kind is what causes real production incidents.
-- [ ] **3.4 Shadow-run two models (~1 h).** Load both the shipped model and the
+- [x] **3.4 Shadow-run two models (~1 h).** Load both the shipped model and the
       `min_samples_leaf=5` model. Serve the shipped one's answer to the caller, but log both.
       Compare after 500 requests.
       *Why this is real:* shadow deployment means running a new model on real traffic without
       letting it affect anyone. It needs traffic, not moving data — so unlike canary
       deployment (which needs a slice of real users you do not have), you can genuinely do
       this today.
-- [ ] **3.5 Make the 500 handler talk (~20 min).** The bare `except Exception` handler currently
+- [x] **3.5 Make the 500 handler talk (~20 min).** The bare `except Exception` handler currently
       returns 500 with no log line. Add structured logging with a request id, the exception type,
       and a traceback. Then trigger a real 500 and confirm you can find it.
       *What you should learn:* an error your system does not record is an error you cannot fix.
 
-**Done when:** five short notes exist in `docs/insights/`, each containing a number or an error
-message you produced yourself.
+**Completed:** all five notes now exist in `docs/insights/`, each with running-service evidence or
+a deliberately produced error. This completes the bounded request-path laboratory; it does not
+make the project a full production ML platform.
 
 ---
 
@@ -280,4 +283,3 @@ Then archive it and start the next project. Do not return to add tools.
 - Spend more than the stated hours. The reason is not that the work is bad — it is that roughly
   40% of what you want to learn cannot be built on a fixed CSV at any hour count, so hours 21
   onward buy less here than hour 1 buys on the next project.
-

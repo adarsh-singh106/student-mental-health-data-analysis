@@ -28,7 +28,26 @@ def _compute_metrics(y_true, y_pred) -> dict[str, float]:
     }
 
 
-def train(path: Path) -> tuple[Pipeline, dict, dict]:
+def build_pipeline(*, min_samples_leaf: int = 1) -> Pipeline:
+    """Construct the fitted-model shape without changing the default release."""
+    if min_samples_leaf < 1:
+        raise ValueError("min_samples_leaf must be at least 1")
+    return Pipeline(
+        [
+            ("prep", build_preprocessor()),
+            (
+                "model",
+                RandomForestRegressor(
+                    random_state=42,
+                    n_jobs=1,
+                    min_samples_leaf=min_samples_leaf,
+                ),
+            ),
+        ]
+    )
+
+
+def train(path: Path, *, min_samples_leaf: int = 1) -> tuple[Pipeline, dict, dict]:
     """Prepare data, evaluate the candidate, and return the fitted release model."""
     path = Path(path)
     logger.info("training started | data=%s", path)
@@ -53,12 +72,7 @@ def train(path: Path) -> tuple[Pipeline, dict, dict]:
         X_train_val, y_train_val, test_size=0.25, random_state=42
     )
 
-    pipeline = Pipeline(
-        [
-            ("prep", build_preprocessor()),
-            ("model", RandomForestRegressor(random_state=42, n_jobs=1)),
-        ]
-    )
+    pipeline = build_pipeline(min_samples_leaf=min_samples_leaf)
 
     # Five independent validation folds make the release gate less dependent on
     # a lucky split. cross_validate clones this pipeline, so the fitted object

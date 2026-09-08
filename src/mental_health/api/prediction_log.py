@@ -16,6 +16,13 @@ DEFAULT_PREDICTION_LOG_PATH = PROJECT_ROOT / "runtime" / "predictions.sqlite3"
 logger = logging.getLogger(__name__)
 
 
+_SHADOW_COLUMNS = {
+    "shadow_model_version": "shadow_model_version TEXT",
+    "shadow_output": "shadow_output REAL",
+    "shadow_latency_ms": "shadow_latency_ms REAL CHECK (shadow_latency_ms >= 0)",
+}
+
+
 def resolve_prediction_log_path() -> Path:
     """Return the local database path, optionally overridden for a deployment."""
     configured_path = os.environ.get("PREDICTION_LOG_PATH")
@@ -43,10 +50,19 @@ def initialize_prediction_log(db_path: Path) -> None:
                 input_json TEXT NOT NULL,
                 output REAL NOT NULL,
                 model_version TEXT NOT NULL,
-                latency_ms REAL NOT NULL CHECK (latency_ms >= 0)
+                latency_ms REAL NOT NULL CHECK (latency_ms >= 0),
+                shadow_model_version TEXT,
+                shadow_output REAL,
+                shadow_latency_ms REAL CHECK (shadow_latency_ms >= 0)
             )
             """
         )
+        existing_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(predictions)")
+        }
+        for column, definition in _SHADOW_COLUMNS.items():
+            if column not in existing_columns:
+                connection.execute(f"ALTER TABLE predictions ADD COLUMN {definition}")
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_predictions_timestamp "
             "ON predictions(timestamp)"
@@ -60,9 +76,17 @@ def write_prediction(
     output: float,
     model_version: str,
     latency_ms: float,
+    shadow_model_version: str | None = None,
+    shadow_output: float | None = None,
+    shadow_latency_ms: float | None = None,
 ) -> bool:
     """Append one successful prediction without making inference depend on SQLite."""
     try:
+        shadow_values = (shadow_model_version, shadow_output, shadow_latency_ms)
+        if any(value is not None for value in shadow_values) and not all(
+            value is not None for value in shadow_values
+        ):
+            raise ValueError("Shadow prediction fields must be supplied together.")
         input_json = json.dumps(
             input_payload,
             allow_nan=False,
@@ -73,8 +97,9 @@ def write_prediction(
             connection.execute(
                 """
                 INSERT INTO predictions (
-                    timestamp, input_json, output, model_version, latency_ms
-                ) VALUES (?, ?, ?, ?, ?)
+                    timestamp, input_json, output, model_version, latency_ms,
+                    shadow_model_version, shadow_output, shadow_latency_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
@@ -82,6 +107,9 @@ def write_prediction(
                     output,
                     model_version,
                     latency_ms,
+                    shadow_model_version,
+                    shadow_output,
+                    shadow_latency_ms,
                 ),
             )
     except (OSError, TypeError, ValueError, sqlite3.Error):

@@ -7,6 +7,7 @@ Purpose of the test :
 from pathlib import Path
 
 import pandas as pd
+import pandera.pandas as pa
 import pytest
 
 from mental_health.data.preparation import prepare_data
@@ -30,6 +31,26 @@ def test_preparation_rejects_missing_column_before_cleaning(tmp_path):
     broken_df.to_csv(broken_path, index=False)
 
     with pytest.raises(DataContractError, match="Physical_Activity_Hours"):
+        prepare_data(broken_path)
+
+
+def test_preparation_rejects_unexpected_column_before_cleaning(tmp_path):
+    broken_df = pd.read_csv(path).assign(Audit_Unexpected_Column="unexpected")
+    broken_path = tmp_path / "unexpected-column.csv"
+    broken_df.to_csv(broken_path, index=False)
+
+    with pytest.raises(DataContractError, match="Audit_Unexpected_Column"):
+        prepare_data(broken_path)
+
+
+def test_preparation_rejects_non_coercible_age_during_pandera_validation(tmp_path):
+    broken_df = pd.read_csv(path)
+    broken_df["Age"] = broken_df["Age"].astype(object)
+    broken_df.loc[0, "Age"] = "not-an-integer"
+    broken_path = tmp_path / "non-numeric-age.csv"
+    broken_df.to_csv(broken_path, index=False)
+
+    with pytest.raises(pa.errors.SchemaErrors, match="Age"):
         prepare_data(broken_path)
 
     
