@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sqlite3
 import statistics
 import subprocess
 import sys
@@ -80,7 +81,7 @@ PROBES = [
     ("Gender not in vocabulary", {**VALID, "Gender": "Other"},
      "422 — closed vocabulary. NOTE: this is a real user your API cannot serve."),
     ("unseen Country 'Wakanda'", {**VALID, "Country": "Wakanda"},
-     "200 — OneHotEncoder(handle_unknown='infrequent_if_exist') absorbs it silently"),
+     "200 - preprocessing collapses it into the explicit Other bucket"),
     ("time budget violated (sum>24)",
      {**VALID, "Sleep_Hours_Per_Night": 12.0, "Study_Hours": 12.0,
       "Avg_Daily_Usage_Hours": 6.0, "Physical_Activity_Hours": 4.0},
@@ -96,23 +97,27 @@ PROBES = [
 ]
 
 
-def section_probes(base: str) -> None:
+def section_probes(base: str) -> int:
     say("## Input validation behaviour")
     say()
     say("| probe | status | expectation | response (truncated) |")
     say("|---|---|---|---|")
+    successful_predictions = 0
     for name, payload, expect in PROBES:
         st, body, _ = post(f"{base}/predict", payload)
+        if st == 200:
+            successful_predictions += 1
         body = body.replace("|", "\\|").replace("\n", " ")[:110]
         say(f"| {name} | **{st}** | {expect} | `{body}` |")
     say()
     say("> Two rows deserve attention regardless of what they return. An unseen "
-        "country is absorbed into an infrequent bucket and scored as if it were "
+        "country is collapsed into the explicit Other bucket and scored as if it were "
         "known — the caller is never told the input was out of vocabulary. And the "
         "extreme-but-legal row is scored with the same confidence as a typical one, "
         "because a point prediction carries no uncertainty. Neither is a crash; both "
         "are things you should be able to describe out loud.")
     say()
+    return successful_predictions
 
 
 # ----------------------------------------------------------------------------
@@ -152,7 +157,7 @@ def load_level(base: str, concurrency: int, seconds: float):
     }
 
 
-def section_load(base: str, duration: float) -> None:
+def section_load(base: str, duration: float) -> list[dict]:
     say("## Latency and throughput")
     say()
     say(f"Closed-loop, {duration:.0f}s per level, single uvicorn worker, "
@@ -179,25 +184,69 @@ def section_load(base: str, duration: float) -> None:
         "rising while p95 climbs, you have found the saturation point — that is the "
         "sentence worth having, not a round number you guessed.")
     say()
+    return rows
 
 
-def section_missing() -> None:
-    say("## Ops surface that does not exist in this repo")
+def latest_prediction_id(db_path: Path) -> int:
+    if not db_path.exists():
+        return 0
+    try:
+        with sqlite3.connect(db_path) as connection:
+            row = connection.execute("SELECT MAX(id) FROM predictions").fetchone()
+    except sqlite3.Error:
+        return 0
+    return row[0] or 0
+
+
+def prediction_log_count(db_path: Path, previous_id: int) -> int | None:
+    try:
+        with sqlite3.connect(db_path) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM predictions WHERE id > ?", (previous_id,)
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    return row[0]
+
+
+def section_prediction_log(
+    db_path: Path, expected_count: int, captured_count: int | None
+) -> None:
+    say("## Prediction log evidence")
+    say()
+    say(f"- SQLite path: `{db_path}`")
+    if captured_count is None:
+        say("- Could not query the SQLite prediction log after the run.")
+    else:
+        say(f"- Successful prediction responses in this audit: **{expected_count}**")
+        say(f"- New SQLite records captured in this audit: **{captured_count}**")
+        if captured_count == expected_count:
+            say("- Record count matched successful responses exactly.")
+        else:
+            say("- Record count did not match successful responses; investigate before "
+                "treating this as an audit trail.")
+    say()
+
+
+def section_ops_surface() -> None:
+    say("## Ops surface")
     say()
     checks = [
-        ("Dockerfile", ROOT / "Dockerfile", "cannot run anywhere but your laptop"),
+        ("Dockerfile", ROOT / "Dockerfile", "code-only image can be built and tested in CI"),
         ("docker-compose.yml", ROOT / "docker-compose.yml", "no local multi-service stack"),
-        (".dockerignore", ROOT / ".dockerignore", "n/a until a Dockerfile exists"),
-        ("CI workflow", ROOT / ".github" / "workflows", "tests never run except by hand"),
-        ("Makefile / task runner", ROOT / "Makefile", "no single documented entrypoint"),
+        (".dockerignore", ROOT / ".dockerignore", "build context excludes raw data and artifacts"),
+        ("CI workflow", ROOT / ".github" / "workflows", "tests and image build run on push and pull requests"),
+        ("Makefile / task runner", ROOT / "Makefile", "documents host training, test, and container serving"),
         ("/metrics endpoint", None, "no Prometheus scrape target"),
         ("structured request logging", None, "a 500 leaves no trace — see the bare "
          "`except Exception` handler in api/main.py, which returns 500 without logging"),
-        ("prediction log / audit trail", None, "no record of what was served to whom"),
+        ("prediction log / audit trail", ROOT / "src" / "mental_health" / "api" /
+         "prediction_log.py", "local SQLite records successful predictions"),
         ("drift monitoring", None, "nothing to compare against a baseline"),
-        ("load test in repo", None, "the numbers above are not reproducible by a reader"),
+        ("load test in repo", ROOT / "audit" / "audit_serving.py",
+         "closed-loop request measurements are reproducible"),
     ]
-    say("| artifact | present | consequence |")
+    say("| artifact | present | notes |")
     say("|---|---|---|")
     for name, path, why in checks:
         present = "yes" if (path and path.exists()) else "**no**"
@@ -209,10 +258,20 @@ def main() -> None:
     duration = float(os.environ.get("AUDIT_SECONDS", "8"))
     port = free_port()
     base = f"http://127.0.0.1:{port}"
+    log_path = Path(
+        os.environ.get("PREDICTION_LOG_PATH", ROOT / "runtime" / "serving-audit.sqlite3")
+    ).expanduser().resolve()
+    previous_log_id = latest_prediction_id(log_path)
+    probe_successes = 0
+    load_rows: list[dict] = []
 
     say("# Serving audit")
     say()
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(ROOT / "src"),
+        "PREDICTION_LOG_PATH": str(log_path),
+    }
     t0 = time.perf_counter()
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "mental_health.api.main:app",
@@ -256,8 +315,8 @@ def main() -> None:
                 "rather than a crash loop. Most student projects have one `/health` "
                 "that returns 200 unconditionally.")
             say()
-            section_probes(base)
-            section_load(base, duration)
+            probe_successes = section_probes(base)
+            load_rows = section_load(base, duration)
     finally:
         proc.terminate()
         try:
@@ -265,7 +324,15 @@ def main() -> None:
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    section_missing()
+    expected_log_count = probe_successes + sum(
+        row["requests"] - row["errors"] for row in load_rows
+    )
+    section_prediction_log(
+        log_path,
+        expected_log_count,
+        prediction_log_count(log_path, previous_log_id),
+    )
+    section_ops_surface()
     out = ROOT / "audit" / "REPORT_serving.md"
     out.write_text("\n".join(OUT), encoding="utf-8")
     print(f"\n>>> wrote {out}")

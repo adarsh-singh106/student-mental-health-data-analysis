@@ -1,3 +1,7 @@
+import json
+import sqlite3
+
+import pytest
 from fastapi.testclient import TestClient
 
 from mental_health.api import main
@@ -53,6 +57,13 @@ def fake_load_crashing_artifact() -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def prediction_log_path(monkeypatch, tmp_path):
+    path = tmp_path / "predictions.sqlite3"
+    monkeypatch.setattr(main, "resolve_prediction_log_path", lambda: path)
+    return path
+
+
 def test_healthz_returns_ok():
     with TestClient(main.app) as client:
         response = client.get("/healthz")
@@ -85,6 +96,35 @@ def test_predict_returns_prediction_for_valid_payload(monkeypatch):
     assert body["mental_health_score"] == 7.25
     assert body["model_version"] == "test-version"
     assert body["note"]
+
+
+def test_predict_persists_the_served_request(monkeypatch, prediction_log_path):
+    monkeypatch.setattr(main, "load_latest_artifact", fake_load_latest_artifact)
+
+    with TestClient(main.app) as client:
+        response = client.post("/predict", json=VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    with sqlite3.connect(prediction_log_path) as connection:
+        row = connection.execute(
+            "SELECT input_json, output, model_version, latency_ms FROM predictions"
+        ).fetchone()
+
+    assert json.loads(row[0]) == VALID_PAYLOAD
+    assert row[1] == 7.25
+    assert row[2] == "test-version"
+    assert row[3] >= 0
+
+
+def test_predict_remains_available_when_prediction_logging_fails(monkeypatch):
+    monkeypatch.setattr(main, "load_latest_artifact", fake_load_latest_artifact)
+    monkeypatch.setattr(main, "write_prediction", lambda *args, **kwargs: False)
+
+    with TestClient(main.app) as client:
+        response = client.post("/predict", json=VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    assert response.json()["mental_health_score"] == 7.25
 
 
 def test_predict_rejects_target_in_request(monkeypatch):

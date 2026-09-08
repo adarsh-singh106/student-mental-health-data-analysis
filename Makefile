@@ -15,6 +15,7 @@
 IMAGE := mental-health
 DATA_PATH ?= $(CURDIR)/data/raw/Student Social Media And Mental Health Impact.csv
 ARTIFACTS_ROOT ?= $(CURDIR)/artifacts
+RUNTIME_ROOT ?= $(CURDIR)/runtime
 
 .PHONY: train test build serve
 
@@ -31,10 +32,13 @@ test:
 build:
 	docker build -t $(IMAGE) .
 
-# Mount the host's ./artifacts read-only so the container serves the trained
-# model. -p maps the container's port 8000 to your laptop's 8000.
+# Mount artifacts read-only and runtime data read-write. The runtime mount keeps
+# the SQLite prediction audit trail after `docker run --rm` exits. -p maps the
+# container's port 8000 to your laptop's 8000.
 serve: build
 	docker run --rm \
 		-p 8000:8000 \
 		-v "$(ARTIFACTS_ROOT):/app/artifacts:ro" \
+		-v "$(RUNTIME_ROOT):/app/runtime" \
+		-e PREDICTION_LOG_PATH=/app/runtime/predictions.sqlite3 \
 		$(IMAGE)

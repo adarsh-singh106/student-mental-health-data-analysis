@@ -5,9 +5,9 @@
 # fresh laptop: get Python -> get uv -> install libraries -> copy code -> say
 # what runs by default.
 #
-# Data (data/raw/) and the trained model (artifacts/) are NOT baked in. They
-# are mounted from the host at run time (see Makefile / README), so the image
-# stays code-only and the unlicensed CSV is never redistributed inside it.
+# Data (data/raw/), trained model (artifacts/), and runtime audit data are NOT
+# baked in. They are mounted from the host at run time (see Makefile / README),
+# so the image stays code-only and the unlicensed CSV is never redistributed.
 # ---------------------------------------------------------------------------
 
 # Step 1 — start from a box that already has Python 3.10.
